@@ -1,0 +1,9 @@
+# Testes em tests/: sobem o codigo de referencia como app FastAPI real.
+# Nao precisa de GPU nem de torch.
+#
+#   uv run --with-requirements requirements-dev.txt pytest tests/
+pytest
+fastapi
+sqlalchemy
+httpx
+tqdm

@@ -1,0 +1,39 @@
+.env
+.env.*
+!.env.example
+
+# Pesos, checkpoints e adapters (dezenas de GB — vão para o HF, não pro git)
+/models/
+/checkpoints/
+/outputs/
+/results/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.gguf
+*.ckpt
+
+# Dados de treino/finetune (gerados; o gerador fica versionado)
+/data/
+/datasets/
+*.jsonl
+*.parquet
+*.arrow
+
+# Ambientes e caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+wandb/
+.cache/
+hf_cache/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# estado do ZeroTier (identity.secret, authtoken.secret), nunca versionar
+/status/
+/logs/
