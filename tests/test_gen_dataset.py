@@ -9,10 +9,12 @@ from gen_dataset import (
     ENTIDADES,
     ENTIDADES_EXTRAS,
     ENTIDADES_TESTE,
+    ENTIDADES_TESTE_AMPLO,
     EXEMPLOS_POR_EXTRA,
     Entidade,
     capitalizar_frase,
     escrever,
+    exemplos_teste_amplo,
     gerar_exemplos,
     montar_saida,
     nome_de_classe,
@@ -183,3 +185,42 @@ def test_referencia_de_extra_roda_o_crud_inteiro(
     criado = app.cliente.post(rota, json=app.payload())
     assert criado.status_code == 201, criado.text
     assert app.cliente.delete(f"{rota}/{criado.json()['id']}").status_code == 200
+
+
+def test_teste_amplo_usa_so_nomes_fora_do_treino() -> None:
+    from nomes_entidades import NOMES_ENTIDADES, NOMES_EXTRAS, NOMES_TESTE_AMPLO
+
+    treino_nomes = {s for s, _ in NOMES_ENTIDADES + NOMES_EXTRAS}
+    assert len(NOMES_TESTE_AMPLO) == 10
+    assert not {s for s, _ in NOMES_TESTE_AMPLO} & treino_nomes
+    treino, _ = separar_teste(gerar_exemplos(1234), ENTIDADES_TESTE)
+    for ent in ENTIDADES_TESTE_AMPLO:
+        marca = f"class {nome_de_classe(ent.singular)}("
+        assert not any(marca in r["output"] for r in treino)
+
+
+def test_teste_amplo_contem_o_teste_original_e_doze_entidades() -> None:
+    _, teste = separar_teste(gerar_exemplos(1234), ENTIDADES_TESTE)
+    amplo = exemplos_teste_amplo(1234)
+    assert all(ex in amplo for ex in teste)
+    classes = {
+        linha
+        for ex in amplo
+        for linha in ex["output"].split("\n")
+        if linha.endswith("(Base):")
+    }
+    assert len(classes) == 12
+
+
+@pytest.mark.parametrize("ent", ENTIDADES_TESTE_AMPLO, ids=lambda e: e.singular)
+def test_referencia_do_teste_amplo_roda_o_crud(
+    ent: Entidade, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app_de_referencia import AppDeReferencia
+
+    monkeypatch.chdir(tmp_path)
+    app = AppDeReferencia(montar_saida(ent, TODAS_OPS, True), ent)
+    rota = f"/{ent.plural}"
+    criado = app.cliente.post(rota, json=app.payload())
+    assert criado.status_code == 201, criado.text
+    assert app.cliente.get(f"{rota}/{criado.json()['id']}").status_code == 200

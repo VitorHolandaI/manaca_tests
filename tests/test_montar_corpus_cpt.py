@@ -34,6 +34,7 @@ def test_marcas_cobrem_classe_e_instrucao_de_teste() -> None:
     marcas = marcas_de_contaminacao(1234)
     assert "class Comentario" in marcas
     assert "class Endereco" in marcas
+    assert "class Recibo" in marcas  # teste amplo
     assert any("comentario" in m for m in marcas if not m.startswith("class "))
 
 

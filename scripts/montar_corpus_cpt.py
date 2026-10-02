@@ -32,7 +32,12 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from gen_dataset import ENTIDADES_TESTE, gerar_exemplos, nome_de_classe, separar_teste
+from gen_dataset import (
+    ENTIDADES_TESTE,
+    ENTIDADES_TESTE_AMPLO,
+    exemplos_teste_amplo,
+    nome_de_classe,
+)
 
 FRACAO_VAL = 0.02
 # `{* ../../docs_src/x.py hl[2] *}` e `{!> ... !}` sao diretivas do mkdocs: o
@@ -63,9 +68,10 @@ class Documento:
 
 
 def marcas_de_contaminacao(seed: int) -> tuple[str, ...]:
-    """Classes e instrucoes do split de teste do gen_dataset."""
-    _, teste = separar_teste(gerar_exemplos(seed), ENTIDADES_TESTE)
-    classes = [f"class {nome_de_classe(e)}" for e in ENTIDADES_TESTE]
+    """Classes e instrucoes do teste amplo, que contem o split de teste."""
+    teste = exemplos_teste_amplo(seed)
+    nomes = list(ENTIDADES_TESTE) + [e.singular for e in ENTIDADES_TESTE_AMPLO]
+    classes = [f"class {nome_de_classe(n)}" for n in nomes]
     return tuple(classes + sorted({r["instruction"] for r in teste}))
 
 

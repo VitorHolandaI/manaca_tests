@@ -361,3 +361,19 @@ NOMES_EXTRAS: tuple[tuple[str, str], ...] = (
     ("patrocinador", "patrocinadores"),
     ("estande", "estandes"),
 )
+
+# teste amplo: nomes fora de NOMES_ENTIDADES e NOMES_EXTRAS. Com so comentario
+# e endereco no teste, 0,5 contra 0,75 era a diferenca de 8 pedidos de uma
+# entidade so (2026-10-02)
+NOMES_TESTE_AMPLO: tuple[tuple[str, str], ...] = (
+    ("recibo", "recibos"),
+    ("reclamacao", "reclamacoes"),
+    ("sugestao", "sugestoes"),
+    ("favorito", "favoritos"),
+    ("anexo", "anexos"),
+    ("convenio", "convenios"),
+    ("pacote", "pacotes"),
+    ("agendamento", "agendamentos"),
+    ("parceiro", "parceiros"),
+    ("comprovante", "comprovantes"),
+)

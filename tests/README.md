@@ -42,6 +42,9 @@ uv run --with-requirements requirements-dev.txt pytest tests/
   Os nomes extras não repetem, não colidem com as entidades originais nem
   com variável do molde, cada um entra com `EXEMPLOS_POR_EXTRA` exemplos, e
   uma amostra deles roda criar e deletar como app real.
+  O teste amplo usa só nomes fora do treino, contém o split de teste
+  original, cobre 12 entidades, e a referência de cada entidade nova roda
+  como app real.
 - `test_restore_case.py` — o nome do módulo em `from`/`import` fica intacto,
   nomes de biblioteca são restaurados, strings e comentários não são tocados, e
   código que não tokeniza vira `ValueError`.

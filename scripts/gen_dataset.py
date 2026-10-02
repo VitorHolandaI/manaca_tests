@@ -23,7 +23,7 @@ import random
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from nomes_entidades import NOMES_ENTIDADES, NOMES_EXTRAS
+from nomes_entidades import NOMES_ENTIDADES, NOMES_EXTRAS, NOMES_TESTE_AMPLO
 
 PREAMBULO = (
     "Abaixo esta uma instrucao que descreve uma tarefa. "
@@ -73,6 +73,11 @@ ENTIDADES: tuple[Entidade, ...] = tuple(
 EXEMPLOS_POR_EXTRA = 6
 ENTIDADES_EXTRAS: tuple[Entidade, ...] = tuple(
     Entidade(singular, plural, CONJUNTOS_CAMPOS[0]) for singular, plural in NOMES_EXTRAS
+)
+
+ENTIDADES_TESTE_AMPLO: tuple[Entidade, ...] = tuple(
+    Entidade(singular, plural, CONJUNTOS_CAMPOS[i % len(CONJUNTOS_CAMPOS)])
+    for i, (singular, plural) in enumerate(NOMES_TESTE_AMPLO)
 )
 
 # entidades inteiras fora do treino: variar so a frase deixaria o teste decorado
@@ -331,6 +336,22 @@ def exemplos_extras(seed: int) -> list[dict[str, str]]:
     return exemplos
 
 
+def exemplos_teste_amplo(seed: int) -> list[dict[str, str]]:
+    """O split de teste original mais todos os exemplos de ENTIDADES_TESTE_AMPLO.
+
+    Exemplo: exemplos_teste_amplo(1234) cobre 12 entidades ineditas no treino
+    """
+    _, teste = separar_teste(gerar_exemplos(seed), ENTIDADES_TESTE)
+    novos = [
+        _exemplo(ent, op, molde, comentar)
+        for ent in ENTIDADES_TESTE_AMPLO
+        for op, _, _ in COMANDOS
+        for molde in INSTRUCOES[op]
+        for comentar in (True, False)
+    ]
+    return teste + novos
+
+
 def gerar_exemplos(
     seed: int, fixas: tuple[str, ...] = ENTIDADES_TESTE
 ) -> list[dict[str, str]]:
@@ -393,6 +414,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Gera dataset FastAPI PT-BR (cased)")
     ap.add_argument("--out", default="data/fastapi_ptbr.jsonl", help="split de treino")
     ap.add_argument("--out-teste", default="data/fastapi_ptbr_teste.jsonl")
+    ap.add_argument("--out-teste-amplo", default="data/fastapi_ptbr_teste_amplo.jsonl")
     ap.add_argument("--seed", type=int, default=1234)
     args = ap.parse_args()
 
@@ -400,6 +422,8 @@ def main() -> int:
     destino, destino_teste = Path(args.out), Path(args.out_teste)
     info = escrever(treino, destino)
     info_teste = escrever(teste, destino_teste)
+    destino_amplo = Path(args.out_teste_amplo)
+    info_amplo = escrever(exemplos_teste_amplo(args.seed), destino_amplo)
     manifest = {
         "arquivo": str(destino),
         "exemplos": info["exemplos"],
@@ -408,6 +432,10 @@ def main() -> int:
         "exemplos_teste": info_teste["exemplos"],
         "sha256_teste": info_teste["sha256"],
         "entidades_teste": list(ENTIDADES_TESTE),
+        "arquivo_teste_amplo": str(destino_amplo),
+        "exemplos_teste_amplo": info_amplo["exemplos"],
+        "sha256_teste_amplo": info_amplo["sha256"],
+        "entidades_teste_amplo": [e.singular for e in ENTIDADES_TESTE_AMPLO],
         "seed": args.seed,
         "licenca": "CC0-1.0 (gerado por scripts/gen_dataset.py, sem dado de terceiro)",
         "formato": "Alpaca {instruction, input, output}",
@@ -423,6 +451,10 @@ def main() -> int:
     print(
         f"teste:  {info_teste['exemplos']} exemplos em {destino_teste} "
         f"(sha256 {info_teste['sha256']})"
+    )
+    print(
+        f"amplo:  {info_amplo['exemplos']} exemplos em {destino_amplo} "
+        f"(sha256 {info_amplo['sha256']})"
     )
     return 0
 
