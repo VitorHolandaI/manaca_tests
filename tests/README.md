@@ -36,6 +36,9 @@ uv run --with-requirements requirements-dev.txt pytest tests/
   nome para restaurar, toda instrução começa em maiúscula, toda rota tem
   docstring capitalizada, e a regressão do split de teste que saía **vazio**
   quando a marca ainda procurava `class comentario(base):`.
+  Trava o sorteio de campos: a mesma entidade de treino aparece com mais de
+  um conjunto de campos, e o sha256 do split de teste continua o medido em
+  2026-10-01, para os números das rodadas seguirem comparáveis.
 - `test_restore_case.py` — o nome do módulo em `from`/`import` fica intacto,
   nomes de biblioteca são restaurados, strings e comentários não são tocados, e
   código que não tokeniza vira `ValueError`.
@@ -53,6 +56,8 @@ uv run --with-requirements requirements-dev.txt pytest tests/
   `--sem-restauro` não esconde saída minúscula (`fastapi()` dá `NameError`),
   `case_rate`/`docstring_rate`, e o critério do passo 4 — o ground truth do
   split de teste dá `runs_rate` 1.0 sem restauro e sem reparo.
+  O `entidade_rate` tem regressão própria: `class Membro(Base)` no lugar de
+  `Comentario` reprova, mesmo compilando e com a rota certa.
 - `test_sandbox_gerado.py` — o `rodar_rotas` aceita o app completo **e** uma
   saída de uma operação só: o dataset gera uma operação por exemplo, então uma
   saída de `delete` não tem POST e tem de passar mesmo assim (a primeira versão

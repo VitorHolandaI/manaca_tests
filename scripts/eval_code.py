@@ -10,6 +10,8 @@ Tres metricas objetivas:
   4. case_rate      -- fracao de saidas que ja nascem com o caso de Python
                       (nenhum nome para restaurar).
   5. docstring_rate -- fracao em que toda rota tem docstring capitalizada.
+  6. entidade_rate  -- fracao em que a classe do model SQLAlchemy e a da
+                      referencia (pega a troca por uma entidade do treino).
 
 Modos:
   --pred arquivo.jsonl   pontua predicoes ja geradas ({instruction, output})
@@ -44,6 +46,7 @@ PREAMBULO = (
 ROTAS = re.compile(r'@app\.(?:post|get|put|delete)\("[^"]+"')
 FUNCOES = re.compile(r"def \w+\(")
 STATUS = re.compile(r"status_code=(\d{3})")
+MODELO_SQL = re.compile(r"^class (\w+)\(Base\):", re.MULTILINE)
 
 # a maior referencia mede 697 tokens; com 512 a geracao cortava 220/256
 MAX_NOVOS_TOKENS_PADRAO = 1024
@@ -92,6 +95,7 @@ class Pontuacao(NamedTuple):
     reparou: int = 0
     caso_ok: bool = False
     docstring_ok: bool = False
+    entidade_ok: bool = False
 
 
 class Relatorio(TypedDict):
@@ -101,6 +105,7 @@ class Relatorio(TypedDict):
     runs_rate: float | None
     case_rate: float
     docstring_rate: float
+    entidade_rate: float
     precisaram_de_restauro: int
     reparados: int
     por_marcador: dict[str, float]
@@ -124,6 +129,16 @@ def docstrings_capitalizadas(codigo: str) -> bool:
     ]
     docs = [ast.get_docstring(f) for f in rotas]
     return bool(docs) and all(d and d[0].isupper() for d in docs)
+
+
+def entidade_certa(referencia: str, saida: str) -> bool:
+    """A saida declara exatamente os models SQLAlchemy da referencia.
+
+    Exemplo: referencia com 'class Comentario(Base):' e saida com
+    'class Membro(Base):' devolve False, mesmo compilando e rodando.
+    """
+    esperadas = set(MODELO_SQL.findall(referencia))
+    return bool(esperadas) and set(MODELO_SQL.findall(saida)) == esperadas
 
 
 def _pontuar(
@@ -179,6 +194,7 @@ def _pontuar(
         reparou,
         caso_ok=not faltando,
         docstring_ok=docstrings_capitalizadas(restaurado),
+        entidade_ok=entidade_certa(referencia, restaurado),
     )
 
 
@@ -220,6 +236,7 @@ def avaliar(
         ),
         "case_rate": _taxa(sum(n.caso_ok for n in notas), total),
         "docstring_rate": _taxa(sum(n.docstring_ok for n in notas), total),
+        "entidade_rate": _taxa(sum(n.entidade_ok for n in notas), total),
         "precisaram_de_restauro": sum(n.precisou_restauro for n in notas),
         "reparados": sum(1 for n in notas if n.reparou),
         "por_marcador": {

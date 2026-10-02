@@ -20,7 +20,7 @@ import argparse
 import hashlib
 import json
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 PREAMBULO = (
@@ -43,8 +43,8 @@ class Entidade:
     campos: tuple[Campo, ...]
 
 
-# conjuntos de campos, ciclados entre as entidades: variar so o nome da entidade
-# deixaria o modelo decorar o formato dos campos em vez de ler a instrucao
+# conjuntos de campos: o ciclo abaixo da o conjunto fixo de cada entidade, que
+# vale no teste; no treino, gerar_exemplos sorteia um conjunto por exemplo
 CONJUNTOS_CAMPOS: tuple[tuple[Campo, ...], ...] = (
     (Campo("nome", "str"), Campo("email", "str"), Campo("ativo", "bool")),
     (Campo("nome", "str"), Campo("preco", "float"), Campo("estoque", "int")),
@@ -362,14 +362,32 @@ def montar_saida(ent: Entidade, ops: tuple[str, ...], comentar: bool) -> str:
     return "\n".join(partes).strip() + "\n"
 
 
-def gerar_exemplos(seed: int) -> list[dict[str, str]]:
+def _sortear_campos(
+    ent: Entidade, rng: random.Random, fixas: tuple[str, ...]
+) -> Entidade:
+    """Troca os campos da entidade por um conjunto sorteado, exceto nas fixas.
+
+    Hipotese: com campo preso a entidade, o modelo trocou a entidade inedita
+    por uma de treino (class Membro no pedido de comentario, 2026-10-01).
+    """
+    if ent.singular in fixas:
+        return ent
+    return replace(ent, campos=rng.choice(CONJUNTOS_CAMPOS))
+
+
+def gerar_exemplos(
+    seed: int, fixas: tuple[str, ...] = ENTIDADES_TESTE
+) -> list[dict[str, str]]:
     rng = random.Random(seed)
+    # rng proprio dos campos: o do shuffle segue igual e o teste nao muda
+    rng_campos = random.Random(seed + 1)
     exemplos: list[dict[str, str]] = []
-    for ent in ENTIDADES:
+    for ent_base in ENTIDADES:
         for op, _, _ in COMANDOS:
             for molde in INSTRUCOES[op]:
                 for comentar in (True, False):
                     ops: tuple[str, ...] = (op,)
+                    ent = _sortear_campos(ent_base, rng_campos, fixas)
                     exemplos.append(
                         {
                             "instruction": capitalizar_frase(
@@ -380,9 +398,10 @@ def gerar_exemplos(seed: int) -> list[dict[str, str]]:
                         }
                     )
     # exemplos multi-operacao: pede duas rotas de uma vez
-    for ent in ENTIDADES:
+    for ent_base in ENTIDADES:
         for comentar in (True, False):
             ops = ("criar", "listar")
+            ent = _sortear_campos(ent_base, rng_campos, fixas)
             exemplos.append(
                 {
                     "instruction": capitalizar_frase(
@@ -445,6 +464,7 @@ def main() -> int:
         "formato": "Alpaca {instruction, input, output}",
         "template": "Alpaca-PT (preambulo + ### Instrucao: / ### Resposta:)",
         "observacao": "caso real de Python; exige o tokenizer v2 (sem Lowercase)",
+        "campos": "sorteados por exemplo no treino; fixos nas entidades de teste",
     }
     (destino.parent / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"

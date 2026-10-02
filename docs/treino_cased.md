@@ -1,6 +1,6 @@
 # Manacá-1B gerando FastAPI em português, com maiúscula
 
-Atualizado em 2026-10-01.
+Atualizado em 2026-10-02.
 
 ## Resultado
 
@@ -96,6 +96,7 @@ O `eval_code.py` gera a resposta de forma determinística (greedy) para cada ped
 | case_rate | os nomes que o restauro antigo corrigiria já saem com a caixa certa |
 | docstring_rate | as docstrings começam com maiúscula |
 | rotas, funcoes, status | a rota, a função e o código de status esperados aparecem no código |
+| entidade_rate | a classe do model SQLAlchemy é a entidade pedida |
 
 ## O que ainda falha
 
@@ -105,10 +106,21 @@ No mesmo exemplo, a classe saiu como `Membro`, uma entidade do treino, com os ca
 
 Outras duas falhas usam `response_model=EnderecoResposta` numa rota de listar, onde o certo é `list[EnderecoResposta]`. A última usa um nome de parâmetro na rota e outro no corpo.
 
-A hipótese mais barata é que o SFT decorou demais. A loss terminou em 0,034 depois de 3 épocas, e com um molde rígido o modelo pode estar colando na entidade de treino mais parecida quando aparece uma nova. Os próximos passos:
+A primeira hipótese foi que o SFT tinha decorado demais, já que a loss terminou em 0,034 depois de 3 épocas. O teste foi refazer só o SFT com 1 época sobre o mesmo CPT, e o resultado piorou em tudo:
 
-- Refazer só o SFT com 1 época sobre o mesmo CPT, o que leva cerca de 13 minutos.
-- Acrescentar ao eval uma métrica que confere se a classe gerada é a entidade pedida na instrução.
+| SFT sobre o CPT grande | case_rate | rotas | compile_rate | runs_rate | docstring_rate |
+| --- | --- | --- | --- | --- | --- |
+| 3 épocas (loss final 0,034) | 1,0 | 0,875 | 0,81 | 0,72 | 0,81 |
+| 1 época (loss final 0,074) | 0,78 | 0,78 | 0,16 | 0,0 | 0,125 |
+
+Com 1 época o modelo nem aprendeu o formato: a sintaxe quebra em quase todo pedido, não só no delete. O adapter de 3 épocas continua sendo o melhor, e a troca de entidade não vem de excesso de treino.
+
+A hipótese atual está no dataset. Cada entidade de treino aparecia sempre com o mesmo conjunto de campos, então o modelo pode ter aprendido a reconhecer a entidade pelos campos em vez de copiar o nome da instrução. Diante de uma entidade nova, ele recorre a uma de treino. Isso ainda não foi medido. As mudanças para testar:
+
+- O gerador agora sorteia o conjunto de campos a cada exemplo de treino. A entidade `usuario`, por exemplo, aparece com os 14 conjuntos. As entidades de teste mantêm os campos fixos e o split de teste continua byte a byte igual ao medido (mesmo sha256), para que os números sigam comparáveis.
+- O eval ganhou `entidade_rate`: a classe do model SQLAlchemy precisa ser a da referência. Uma saída com `class Membro(Base)` num pedido de comentário agora reprova nessa métrica, mesmo compilando e rodando.
+
+O próximo passo é refazer o SFT de 3 épocas com o dataset novo, cerca de 40 minutos, e comparar `entidade_rate` com o adapter atual.
 
 ## Problemas encontrados no caminho
 

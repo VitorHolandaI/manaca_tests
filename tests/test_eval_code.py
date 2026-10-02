@@ -13,6 +13,7 @@ from eval_code import (
     _prompt,
     avaliar,
     docstrings_capitalizadas,
+    entidade_certa,
     exigencias,
 )
 from gen_dataset import ENTIDADES_TESTE, gerar_exemplos, separar_teste
@@ -249,3 +250,22 @@ def test_ground_truth_passa_sem_nenhum_remendo() -> None:
     assert relatorio["docstring_rate"] == 1.0
     assert relatorio["precisaram_de_restauro"] == 0
     assert relatorio["reparados"] == 0
+
+
+MODELO_COMENTARIO = "class Comentario(Base):\n    __tablename__ = 'comentarios'\n"
+
+
+def test_entidade_certa_pega_a_troca_por_entidade_do_treino() -> None:
+    # regressao: o eval de 2026-10-01 deu case 1,0 e rota certa para uma
+    # saida com class Membro(Base) no lugar de Comentario
+    trocada = MODELO_COMENTARIO.replace("Comentario", "Membro")
+    assert entidade_certa(MODELO_COMENTARIO, MODELO_COMENTARIO)
+    assert not entidade_certa(MODELO_COMENTARIO, trocada)
+    assert not entidade_certa(MODELO_COMENTARIO, "x = 1\n")
+
+
+def test_avaliar_relata_entidade_rate() -> None:
+    ref = [{"instruction": "a", "output": MODELO_COMENTARIO}]
+    trocada = MODELO_COMENTARIO.replace("Comentario", "Membro")
+    assert avaliar(ref, {"a": MODELO_COMENTARIO}, None)["entidade_rate"] == 1.0
+    assert avaliar(ref, {"a": trocada}, None)["entidade_rate"] == 0.0

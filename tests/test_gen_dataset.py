@@ -43,7 +43,9 @@ def test_split_de_teste_tem_as_duas_entidades() -> None:
     # cased, e o split de teste saia vazio sem nenhum erro
     _, teste = separar_teste(gerar_exemplos(1234), ENTIDADES_TESTE)
     for entidade in ENTIDADES_TESTE:
-        assert any(f"class {nome_de_classe(entidade)}(Base):" in r["output"] for r in teste)
+        assert any(
+            f"class {nome_de_classe(entidade)}(Base):" in r["output"] for r in teste
+        )
 
 
 def test_nome_de_classe_capitaliza_so_a_primeira() -> None:
@@ -61,7 +63,9 @@ def test_capitalizar_frase_corrige_bibliotecas() -> None:
 def test_saida_ja_nasce_com_caso_de_python() -> None:
     for exemplo in gerar_exemplos(1234):
         assert nomes_a_restaurar(exemplo["output"]) == []
-        assert "from fastapi import FastAPI, HTTPException, Depends" in exemplo["output"]
+        assert (
+            "from fastapi import FastAPI, HTTPException, Depends" in exemplo["output"]
+        )
 
 
 def test_instrucao_comeca_com_maiuscula() -> None:
@@ -110,3 +114,35 @@ def test_referencia_roda_o_crud_inteiro(
     assert app.cliente.put(item, json=app.payload()).status_code == 200
     assert app.cliente.delete(item).status_code == 200
     assert app.cliente.get(item).status_code == 404
+
+
+# sha256 do split de teste medido nas rodadas de 2026-10-01; mudar o treino
+# nao pode mudar o teste, senao os numeros deixam de ser comparaveis
+SHA_TESTE_MEDIDO = "44be4950f1475730c7b7b8e5751670ae36b17da1a2f58702e6dbe94c816b3ed7"
+
+
+def _campos_do_modelo(codigo: str) -> tuple[str, ...]:
+    classe = next(
+        n
+        for n in ast.walk(ast.parse(codigo))
+        if isinstance(n, ast.ClassDef)
+        and any(isinstance(b, ast.Name) and b.id == "Base" for b in n.bases)
+    )
+    return tuple(
+        alvo.id
+        for n in classe.body
+        if isinstance(n, ast.Assign)
+        for alvo in n.targets
+        if isinstance(alvo, ast.Name) and alvo.id not in ("id", "__tablename__")
+    )
+
+
+def test_campos_do_treino_variam_dentro_da_mesma_entidade() -> None:
+    treino, _ = separar_teste(gerar_exemplos(1234), ENTIDADES_TESTE)
+    usuario = [r["output"] for r in treino if "class Usuario(Base):" in r["output"]]
+    assert len({_campos_do_modelo(c) for c in usuario}) > 1
+
+
+def test_split_de_teste_continua_identico_ao_medido(tmp_path: Path) -> None:
+    _, teste = separar_teste(gerar_exemplos(1234), ENTIDADES_TESTE)
+    assert escrever(teste, tmp_path / "t.jsonl")["sha256"] == SHA_TESTE_MEDIDO
