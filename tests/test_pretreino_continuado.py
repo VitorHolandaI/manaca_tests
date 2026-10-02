@@ -60,7 +60,7 @@ def test_indices_espacados_recusa_teto_invalido() -> None:
 
 def test_carregar_textos_aguenta_separador_unicode(tmp_path: Path) -> None:
     corpus = tmp_path / "c.jsonl"
-    texto = "linha separada\x85aqui"
+    texto = "linha\u2028separada\x85aqui"
     corpus.write_text(
         json.dumps({"text": texto}, ensure_ascii=False) + "\n", encoding="utf-8"
     )

@@ -23,6 +23,8 @@ import random
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from nomes_entidades import NOMES_ENTIDADES, NOMES_EXTRAS
+
 PREAMBULO = (
     "Abaixo esta uma instrucao que descreve uma tarefa. "
     "Escreva uma resposta que atenda adequadamente ao pedido."
@@ -62,89 +64,15 @@ CONJUNTOS_CAMPOS: tuple[tuple[Campo, ...], ...] = (
     (Campo("nome", "str"), Campo("prioridade", "int"), Campo("concluido", "bool")),
 )
 
-# as 8 primeiras sao as originais: os campos de comentario e endereco nao mudam,
-# entao o split de teste continua identico ao que ja foi medido
-NOMES_ENTIDADES: tuple[tuple[str, str], ...] = (
-    ("usuario", "usuarios"),
-    ("produto", "produtos"),
-    ("pedido", "pedidos"),
-    ("tarefa", "tarefas"),
-    ("cliente", "clientes"),
-    ("categoria", "categorias"),
-    ("comentario", "comentarios"),
-    ("endereco", "enderecos"),
-    ("documento", "documentos"),
-    ("contrato", "contratos"),
-    ("fatura", "faturas"),
-    ("fornecedor", "fornecedores"),
-    ("funcionario", "funcionarios"),
-    ("evento", "eventos"),
-    ("ingresso", "ingressos"),
-    ("transacao", "transacoes"),
-    ("servico", "servicos"),
-    ("projeto", "projetos"),
-    ("equipe", "equipes"),
-    ("membro", "membros"),
-    ("grupo", "grupos"),
-    ("mensagem", "mensagens"),
-    ("item", "itens"),
-    ("orcamento", "orcamentos"),
-    ("pagamento", "pagamentos"),
-    ("assinatura", "assinaturas"),
-    ("campanha", "campanhas"),
-    ("anuncio", "anuncios"),
-    ("etiqueta", "etiquetas"),
-    ("estoque", "estoques"),
-    ("lote", "lotes"),
-    ("transportadora", "transportadoras"),
-    ("entrega", "entregas"),
-    ("avaliacao", "avaliacoes"),
-    ("curtida", "curtidas"),
-    ("seguidor", "seguidores"),
-    ("perfil", "perfis"),
-    ("conta", "contas"),
-    ("cartao", "cartoes"),
-    ("boleto", "boletos"),
-    ("nota", "notas"),
-    ("disciplina", "disciplinas"),
-    ("turma", "turmas"),
-    ("aluno", "alunos"),
-    ("professor", "professores"),
-    ("curso", "cursos"),
-    ("matricula", "matriculas"),
-    ("aula", "aulas"),
-    ("biblioteca", "bibliotecas"),
-    ("livro", "livros"),
-    ("autor", "autores"),
-    ("editora", "editoras"),
-    ("emprestimo", "emprestimos"),
-    ("reserva", "reservas"),
-    ("quarto", "quartos"),
-    ("hospede", "hospedes"),
-    ("voo", "voos"),
-    ("passageiro", "passageiros"),
-    ("bilhete", "bilhetes"),
-    ("consulta", "consultas"),
-    ("paciente", "pacientes"),
-    ("medico", "medicos"),
-    ("exame", "exames"),
-    ("receita", "receitas"),
-    ("medicamento", "medicamentos"),
-    ("leitura", "leituras"),
-    ("sensor", "sensores"),
-    ("dispositivo", "dispositivos"),
-    ("alerta", "alertas"),
-    ("incidente", "incidentes"),
-    ("chamado", "chamados"),
-    ("arquivo", "arquivos"),
-    ("pasta", "pastas"),
-    ("sprint", "sprints"),
-    ("repositorio", "repositorios"),
-)
-
 ENTIDADES: tuple[Entidade, ...] = tuple(
     Entidade(singular, plural, CONJUNTOS_CAMPOS[i % len(CONJUNTOS_CAMPOS)])
     for i, (singular, plural) in enumerate(NOMES_ENTIDADES)
+)
+
+# poucos exemplos por extra: o volume vem do numero de nomes, nao de repeticao
+EXEMPLOS_POR_EXTRA = 6
+ENTIDADES_EXTRAS: tuple[Entidade, ...] = tuple(
+    Entidade(singular, plural, CONJUNTOS_CAMPOS[0]) for singular, plural in NOMES_EXTRAS
 )
 
 # entidades inteiras fora do treino: variar so a frase deixaria o teste decorado
@@ -375,6 +303,34 @@ def _sortear_campos(
     return replace(ent, campos=rng.choice(CONJUNTOS_CAMPOS))
 
 
+def _exemplo(ent: Entidade, op: str, molde: str, comentar: bool) -> dict[str, str]:
+    return {
+        "instruction": capitalizar_frase(molde.format(s=ent.singular, p=ent.plural)),
+        "input": "",
+        "output": montar_saida(ent, (op,), comentar),
+    }
+
+
+def exemplos_extras(seed: int) -> list[dict[str, str]]:
+    """EXEMPLOS_POR_EXTRA exemplos sorteados de cada entidade extra.
+
+    Exemplo: len(exemplos_extras(1234)) == len(NOMES_EXTRAS) * EXEMPLOS_POR_EXTRA
+    """
+    rng = random.Random(seed + 2)
+    combinacoes = [
+        (op, molde, comentar)
+        for op, _, _ in COMANDOS
+        for molde in INSTRUCOES[op]
+        for comentar in (True, False)
+    ]
+    exemplos: list[dict[str, str]] = []
+    for ent_base in ENTIDADES_EXTRAS:
+        for op, molde, comentar in rng.sample(combinacoes, EXEMPLOS_POR_EXTRA):
+            ent = _sortear_campos(ent_base, rng, ())
+            exemplos.append(_exemplo(ent, op, molde, comentar))
+    return exemplos
+
+
 def gerar_exemplos(
     seed: int, fixas: tuple[str, ...] = ENTIDADES_TESTE
 ) -> list[dict[str, str]]:
@@ -386,17 +342,8 @@ def gerar_exemplos(
         for op, _, _ in COMANDOS:
             for molde in INSTRUCOES[op]:
                 for comentar in (True, False):
-                    ops: tuple[str, ...] = (op,)
                     ent = _sortear_campos(ent_base, rng_campos, fixas)
-                    exemplos.append(
-                        {
-                            "instruction": capitalizar_frase(
-                                molde.format(s=ent.singular, p=ent.plural)
-                            ),
-                            "input": "",
-                            "output": montar_saida(ent, ops, comentar),
-                        }
-                    )
+                    exemplos.append(_exemplo(ent, op, molde, comentar))
     # exemplos multi-operacao: pede duas rotas de uma vez
     for ent_base in ENTIDADES:
         for comentar in (True, False):
@@ -412,7 +359,9 @@ def gerar_exemplos(
                 }
             )
     rng.shuffle(exemplos)
-    return exemplos
+    # extras no fim: o shuffle acima fica igual e o split de teste nao muda;
+    # a ordem de treino quem embaralha e o Trainer
+    return exemplos + exemplos_extras(seed)
 
 
 def separar_teste(
@@ -465,6 +414,7 @@ def main() -> int:
         "template": "Alpaca-PT (preambulo + ### Instrucao: / ### Resposta:)",
         "observacao": "caso real de Python; exige o tokenizer v2 (sem Lowercase)",
         "campos": "sorteados por exemplo no treino; fixos nas entidades de teste",
+        "entidades_extras": len(ENTIDADES_EXTRAS),
     }
     (destino.parent / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"

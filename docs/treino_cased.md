@@ -4,16 +4,18 @@ Atualizado em 2026-10-02.
 
 ## Resultado
 
-Depois de um pré-treino continuado grande e de um ajuste fino com QLoRA, o Manacá-1B escreve uma API FastAPI + SQLAlchemy em português, com a caixa certa e sem nenhum script de conserto depois. Nos 32 pedidos de teste, sobre duas entidades que o modelo nunca viu no treino, 81% das respostas compilam e 72% sobem e passam nas requisições do teste.
+Depois de um pré-treino continuado grande e de um ajuste fino com QLoRA, o Manacá-1B escreve uma API FastAPI + SQLAlchemy em português, com a caixa certa e sem nenhum script de conserto depois. Nos 32 pedidos de teste, sobre duas entidades que o modelo nunca viu no treino, todas as respostas compilam, sobem e passam nas requisições do teste. O que ainda falta é o nome da classe: com `endereco` ele acerta `Endereco` em todos os pedidos, com `comentario` acerta `Comentario` em metade e escreve `Contato` na outra metade.
 
-| Rodada | Pós-processamento | case_rate | rotas | compile_rate | runs_rate |
-| --- | --- | --- | --- | --- | --- |
-| Tokenizer original, só LoRA | restauro de caixa + reparo | n/d | 0,97 | n/d | 1,0 |
-| Tokenizer v2 + CPT pequeno, só LoRA | nenhum | 0,09 | 0,03 | 0,0 | 0,0 |
-| Tokenizer v2 + CPT pequeno, LoRA + lm_head | nenhum | 1,0 | 0,0 | 0,625 | 0,59 |
-| Tokenizer v2 + CPT grande, só LoRA | nenhum | 1,0 | 0,875 | 0,81 | 0,72 |
+| Rodada | Pós-processamento | case_rate | entidade_rate | rotas | compile_rate | runs_rate |
+| --- | --- | --- | --- | --- | --- | --- |
+| Tokenizer original, só LoRA | restauro de caixa + reparo | n/d | n/d | 0,97 | n/d | 1,0 |
+| Tokenizer v2 + CPT pequeno, só LoRA | nenhum | 0,09 | n/d | 0,03 | 0,0 | 0,0 |
+| Tokenizer v2 + CPT pequeno, LoRA + lm_head | nenhum | 1,0 | n/d | 0,0 | 0,625 | 0,59 |
+| Tokenizer v2 + CPT grande, só LoRA | nenhum | 1,0 | 0,5 | 0,875 | 0,81 | 0,72 |
+| Idem, com campos sorteados no SFT | nenhum | 1,0 | 0,5 | 0,94 | 0,97 | 0,97 |
+| Idem, com 266 nomes extras no SFT | nenhum | 1,0 | 0,75 | 0,94 | 1,0 | 1,0 |
 
-A primeira linha ainda tem o melhor runs_rate, mas só chega lá com dois scripts que corrigem a saída. A última é a primeira rodada em que o próprio modelo acerta a caixa e a entidade nova.
+A primeira linha só chega a runs_rate 1,0 com dois scripts que corrigem a saída. O runs_rate das três últimas conta como sucesso um app que roda com a classe errada, por isso a coluna entidade_rate entrou depois: ela foi medida de novo sobre as predições já salvas da antepenúltima rodada.
 
 ## O que o projeto faz
 
@@ -100,27 +102,33 @@ O `eval_code.py` gera a resposta de forma determinística (greedy) para cada ped
 
 ## O que ainda falha
 
-Das 9 falhas da rodada atual, 6 são erro de sintaxe e todas estão em rotas de delete. O modelo escreve `def deletar_comentario(item_id: int, sessao.query(Membro)):`, pulando a assinatura direto para o corpo. Os 438 exemplos de delete do treino têm a mesma assinatura correta, então o erro não vem de dado inconsistente.
+A investigação passou por quatro rodadas de SFT sobre o mesmo CPT grande.
 
-No mesmo exemplo, a classe saiu como `Membro`, uma entidade do treino, com os campos de `endereco`. O `comentario` só aparece no nome da rota e da função. O case_rate não pega isso, porque `Membro` tem a caixa certa.
+| SFT sobre o CPT grande | case_rate | entidade_rate | rotas | compile_rate | runs_rate | docstring_rate |
+| --- | --- | --- | --- | --- | --- | --- |
+| 3 épocas, campos fixos por entidade (loss final 0,034) | 1,0 | 0,5 | 0,875 | 0,81 | 0,72 | 0,81 |
+| 1 época, campos fixos (loss final 0,074) | 0,78 | n/d | 0,78 | 0,16 | 0,0 | 0,125 |
+| 3 épocas, campos sorteados (loss final 0,039) | 1,0 | 0,5 | 0,94 | 0,97 | 0,97 | 0,97 |
+| 3 épocas, campos sorteados + 266 nomes extras (loss final 0,033) | 1,0 | 0,75 | 0,94 | 1,0 | 1,0 | 1,0 |
 
-Outras duas falhas usam `response_model=EnderecoResposta` numa rota de listar, onde o certo é `list[EnderecoResposta]`. A última usa um nome de parâmetro na rota e outro no corpo.
+Na primeira, 6 das 9 falhas eram erro de sintaxe em rotas de delete, como `def deletar_comentario(item_id: int, sessao.query(Membro)):`. A classe também saiu `Membro`, uma entidade do treino. A primeira hipótese foi excesso de treino, e o SFT de 1 época derrubou essa hipótese: o modelo nem aprendeu o formato.
 
-A primeira hipótese foi que o SFT tinha decorado demais, já que a loss terminou em 0,034 depois de 3 épocas. O teste foi refazer só o SFT com 1 época sobre o mesmo CPT, e o resultado piorou em tudo:
+A segunda hipótese foi que cada entidade de treino aparecia sempre com os mesmos campos, e o modelo reconheceria a entidade pelos campos. O gerador passou a sortear os campos a cada exemplo, e as entidades de teste mantiveram os campos fixos, com o split de teste byte a byte igual (mesmo sha256). A sintaxe melhorou muito, mas o entidade_rate ficou exatamente em 0,5.
 
-| SFT sobre o CPT grande | case_rate | rotas | compile_rate | runs_rate | docstring_rate |
-| --- | --- | --- | --- | --- | --- |
-| 3 épocas (loss final 0,034) | 1,0 | 0,875 | 0,81 | 0,72 | 0,81 |
-| 1 época (loss final 0,074) | 0,78 | 0,78 | 0,16 | 0,0 | 0,125 |
+Separando por entidade, o 0,5 tem uma causa só:
 
-Com 1 época o modelo nem aprendeu o formato: a sintaxe quebra em quase todo pedido, não só no delete. O adapter de 3 épocas continua sendo o melhor, e a troca de entidade não vem de excesso de treino.
+| Pedido | Classe gerada | Função gerada |
+| --- | --- | --- |
+| endereco (16) | `Endereco` em 16 | `deletar_enderco`, sem um "e", no singular; o plural sai certo |
+| comentario (16) | `Perfil` 10, `Paciente` 3, `Curso`, `comenta`, `miguelonte` | `deletar_comentario` certo em 16 |
 
-A hipótese atual está no dataset. Cada entidade de treino aparecia sempre com o mesmo conjunto de campos, então o modelo pode ter aprendido a reconhecer a entidade pelos campos em vez de copiar o nome da instrução. Diante de uma entidade nova, ele recorre a uma de treino. Isso ainda não foi medido. As mudanças para testar:
+O tokenizer v2 explica a diferença. A palavra da instrução e o nome da função usam uma peça só, `comentario`. A classe vira `▁Com` `enta` `rio`, três peças sem nada em comum com a primeira. Com `endereco` acontece o mesmo (`▁Ende` `reco`), e mesmo assim ele acerta. A frequência no corpus do CPT não separa os dois casos: `Comentario` aparece 94 vezes e `Endereco` 146. O SFT ensinava a tradução de minúscula para classe entidade por entidade, e numa entidade inédita ela só funciona quando o caminho de peças já é provável por acaso.
 
-- O gerador agora sorteia o conjunto de campos a cada exemplo de treino. A entidade `usuario`, por exemplo, aparece com os 14 conjuntos. As entidades de teste mantêm os campos fixos e o split de teste continua byte a byte igual ao medido (mesmo sha256), para que os números sigam comparáveis.
-- O eval ganhou `entidade_rate`: a classe do model SQLAlchemy precisa ser a da referência. Uma saída com `class Membro(Base)` num pedido de comentário agora reprova nessa métrica, mesmo compilando e rodando.
+A primeira mudança foi dar ao SFT 266 nomes extras de entidade, com 6 exemplos sorteados cada (`scripts/nomes_entidades.py`). O treino passou de 2.336 para 3.932 exemplos, e o split de teste não mudou. Com centenas de pares de minúscula e classe, o modelo tem mais chance de aprender a regra em vez de decorar a tabela.
 
-O próximo passo é refazer o SFT de 3 épocas com o dataset novo, cerca de 40 minutos, e comparar `entidade_rate` com o adapter atual.
+O entidade_rate subiu de 0,5 para 0,75, e o defeito do `enderco` sumiu. `Endereco` continua certo em 16 de 16. `Comentario` sai certo em 8 de 16, e os outros 8 saem `Contato`, um dos nomes extras. A classe certa e a errada começam com peças parecidas (`▁Com` e `▁Con`). Os erros se concentram nos pedidos de listar, que trazem só o plural `comentarios` na instrução.
+
+Com só duas entidades de teste, a diferença entre 0,5 e 0,75 é de 8 pedidos de uma única entidade, pouco para escolher entre estratégias. O próximo passo é separar mais entidades inéditas para o teste antes de decidir se vale a correção estrutural: o tokenizer marcar a maiúscula com uma peça própria, de modo que `Comentario` vire `<maiúscula>` seguido da mesma peça `comentario` da instrução. Isso tornaria a classe uma cópia, mas exige refazer o tokenizer e o CPT e passa a precisar de um passo de decodificação fora do modelo.
 
 ## Problemas encontrados no caminho
 
@@ -129,7 +137,7 @@ O próximo passo é refazer o SFT de 3 épocas com o dataset novo, cerca de 40 m
 | Conjunto de teste vazio | o filtro procurava `class comentario` em minúsculas | usa o mesmo `nome_de_classe` do gerador, com teste de regressão |
 | Resposta 422 contada como sucesso na sandbox | o filtro de schema de entrada não reconhecia `UsuarioCriar` com maiúscula | comparação sem diferenciar caixa |
 | Erro ao expandir o embedding | matriz com 64.128 linhas, não 64.000 | aceita o preenchimento, recusa só matriz menor |
-| JSON quebrado na linha 3.131 do corpus | `str.splitlines()` também quebra em ` ` e `\x85`, que o `json.dumps(ensure_ascii=False)` deixa crus dentro do texto | os leitores de JSONL usam `split("\n")`, com teste de regressão |
+| JSON quebrado na linha 3.131 do corpus | `str.splitlines()` também quebra em `\u2028` e `\x85`, que o `json.dumps(ensure_ascii=False)` deixa crus dentro do texto | os leitores de JSONL usam `split("\n")`, com teste de regressão |
 
 ## Ambiente
 

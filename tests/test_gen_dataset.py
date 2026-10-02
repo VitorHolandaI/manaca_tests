@@ -7,7 +7,9 @@ from pathlib import Path
 import pytest
 from gen_dataset import (
     ENTIDADES,
+    ENTIDADES_EXTRAS,
     ENTIDADES_TESTE,
+    EXEMPLOS_POR_EXTRA,
     Entidade,
     capitalizar_frase,
     escrever,
@@ -146,3 +148,38 @@ def test_campos_do_treino_variam_dentro_da_mesma_entidade() -> None:
 def test_split_de_teste_continua_identico_ao_medido(tmp_path: Path) -> None:
     _, teste = separar_teste(gerar_exemplos(1234), ENTIDADES_TESTE)
     assert escrever(teste, tmp_path / "t.jsonl")["sha256"] == SHA_TESTE_MEDIDO
+
+
+def test_extras_nao_repetem_nem_colidem_com_o_molde() -> None:
+    import keyword
+
+    from nomes_entidades import NOMES_EXTRAS
+
+    singulares = [s for s, _ in NOMES_EXTRAS]
+    originais = {e.singular for e in ENTIDADES} | {e.plural for e in ENTIDADES}
+    assert len(set(singulares)) == len(singulares)
+    assert not set(singulares) & originais
+    assert not set(singulares) & set(ENTIDADES_TESTE)
+    proibidos = {"registro", "sessao", "resposta", "dados", "item_id", "base"}
+    assert not any(keyword.iskeyword(s) or s in proibidos for s in singulares)
+
+
+def test_cada_extra_entra_no_treino_com_poucos_exemplos() -> None:
+    treino, _ = separar_teste(gerar_exemplos(1234), ENTIDADES_TESTE)
+    for ent in ENTIDADES_EXTRAS[:5]:
+        marca = f"class {nome_de_classe(ent.singular)}(Base):"
+        assert sum(marca in r["output"] for r in treino) == EXEMPLOS_POR_EXTRA
+
+
+@pytest.mark.parametrize("ent", ENTIDADES_EXTRAS[::40], ids=lambda e: e.singular)
+def test_referencia_de_extra_roda_o_crud_inteiro(
+    ent: Entidade, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app_de_referencia import AppDeReferencia
+
+    monkeypatch.chdir(tmp_path)
+    app = AppDeReferencia(montar_saida(ent, TODAS_OPS, False), ent)
+    rota = f"/{ent.plural}"
+    criado = app.cliente.post(rota, json=app.payload())
+    assert criado.status_code == 201, criado.text
+    assert app.cliente.delete(f"{rota}/{criado.json()['id']}").status_code == 200

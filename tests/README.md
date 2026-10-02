@@ -39,6 +39,9 @@ uv run --with-requirements requirements-dev.txt pytest tests/
   Trava o sorteio de campos: a mesma entidade de treino aparece com mais de
   um conjunto de campos, e o sha256 do split de teste continua o medido em
   2026-10-01, para os números das rodadas seguirem comparáveis.
+  Os nomes extras não repetem, não colidem com as entidades originais nem
+  com variável do molde, cada um entra com `EXEMPLOS_POR_EXTRA` exemplos, e
+  uma amostra deles roda criar e deletar como app real.
 - `test_restore_case.py` — o nome do módulo em `from`/`import` fica intacto,
   nomes de biblioteca são restaurados, strings e comentários não são tocados, e
   código que não tokeniza vira `ValueError`.
