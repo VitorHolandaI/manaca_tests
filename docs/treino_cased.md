@@ -4,7 +4,7 @@ Atualizado em 2026-10-02.
 
 ## Resultado
 
-Depois de um pré-treino continuado grande e de um ajuste fino com QLoRA, o Manacá-1B escreve uma API FastAPI + SQLAlchemy em português, com a caixa certa e sem nenhum script de conserto depois. Nos 32 pedidos de teste, sobre duas entidades que o modelo nunca viu no treino, todas as respostas compilam, sobem e passam nas requisições do teste. O que ainda falta é o nome da classe: com `endereco` ele acerta `Endereco` em todos os pedidos, com `comentario` acerta `Comentario` em metade e escreve `Contato` na outra metade.
+Depois de um pré-treino continuado grande e de um ajuste fino com QLoRA, o Manacá-1B escreve uma API FastAPI + SQLAlchemy em português, com a caixa certa e sem nenhum script de conserto depois. Nos 32 pedidos de teste, sobre duas entidades que o modelo nunca viu no treino, todas as respostas compilam, sobem e passam nas requisições do teste. Num teste mais amplo, com 12 entidades inéditas, esses números caem para 81% e 75%, e a classe sai com o nome certo em só 29% dos pedidos. O nome da classe é o problema em aberto.
 
 | Rodada | Pós-processamento | case_rate | entidade_rate | rotas | compile_rate | runs_rate |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -128,7 +128,17 @@ A primeira mudança foi dar ao SFT 266 nomes extras de entidade, com 6 exemplos 
 
 O entidade_rate subiu de 0,5 para 0,75, e o defeito do `enderco` sumiu. `Endereco` continua certo em 16 de 16. `Comentario` sai certo em 8 de 16, e os outros 8 saem `Contato`, um dos nomes extras. A classe certa e a errada começam com peças parecidas (`▁Com` e `▁Con`). Os erros se concentram nos pedidos de listar, que trazem só o plural `comentarios` na instrução.
 
-Com só duas entidades de teste, a diferença entre 0,5 e 0,75 é de 8 pedidos de uma única entidade, pouco para escolher entre estratégias. O próximo passo é separar mais entidades inéditas para o teste antes de decidir se vale a correção estrutural: o tokenizer marcar a maiúscula com uma peça própria, de modo que `Comentario` vire `<maiúscula>` seguido da mesma peça `comentario` da instrução. Isso tornaria a classe uma cópia, mas exige refazer o tokenizer e o CPT e passa a precisar de um passo de decodificação fora do modelo.
+Com só duas entidades de teste, a diferença entre 0,5 e 0,75 era de 8 pedidos de uma única entidade. Por isso entrou um teste amplo (`data/fastapi_ptbr_teste_amplo.jsonl`): o teste original mais 10 entidades que nunca entram no treino, 182 pedidos distintos. Sete das 10 classes novas nunca aparecem como `class X(` no corpus do CPT, e as outras três aparecem no máximo duas vezes. Como o treino não mudou, os três adapters foram medidos de novo sem treinar nada:
+
+| Adapter | entidade_rate (12 entidades) | compile_rate | runs_rate | docstring_rate | entidade_rate (2 entidades) |
+| --- | --- | --- | --- | --- | --- |
+| campos fixos por entidade | 0,14 | 0,68 | 0,64 | 0,67 | 0,5 |
+| campos sorteados | 0,13 | 0,86 | 0,84 | 0,86 | 0,5 |
+| campos sorteados + 266 nomes extras | 0,29 | 0,81 | 0,75 | 0,81 | 0,75 |
+
+O teste de duas entidades era otimista: `Endereco` saía certo por sorte do caminho de peças, não por regra aprendida. Sortear os campos melhorou a sintaxe e não mudou a cópia do nome. Os nomes extras dobraram o entidade_rate, mas a partir de um patamar baixo.
+
+Os próximos passos possíveis são escalar os nomes em dez vezes, colhendo nomes de classe em português do código já colhido, ou mudar o tokenizer para marcar a maiúscula com uma peça própria, de modo que `Comentario` vire `<maiúscula>` seguido da mesma peça `comentario` da instrução. O segundo ataca a causa, mas exige refazer o tokenizer e o CPT e passa a precisar de um passo de decodificação fora do modelo.
 
 ## Problemas encontrados no caminho
 
