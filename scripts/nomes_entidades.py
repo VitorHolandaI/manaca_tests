@@ -12,6 +12,8 @@ ou com sufixo de schema (`resposta`).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 # as 8 primeiras sao as originais: os campos de comentario e endereco nao mudam,
 # entao o split de teste continua identico ao que ja foi medido
 NOMES_ENTIDADES: tuple[tuple[str, str], ...] = (
@@ -377,3 +379,24 @@ NOMES_TESTE_AMPLO: tuple[tuple[str, str], ...] = (
     ("parceiro", "parceiros"),
     ("comprovante", "comprovantes"),
 )
+
+
+def carregar_nomes_colhidos(caminho: Path) -> tuple[tuple[str, str], ...]:
+    """Le o TSV `singular<TAB>plural` escrito por colher_nomes_classe.py.
+
+    Exemplo: carregar_nomes_colhidos(Path("scripts/nomes_colhidos.tsv"))
+    """
+    if not caminho.is_file():
+        raise FileNotFoundError(f"tsv de nomes nao encontrado: {caminho}")
+    nomes: list[tuple[str, str]] = []
+    for numero, linha in enumerate(caminho.read_text(encoding="utf-8").split("\n"), 1):
+        if not linha:
+            continue
+        partes = linha.split("\t")
+        if len(partes) != 2 or not all(p.isalpha() and p.islower() for p in partes):
+            raise ValueError(
+                f"{caminho}:{numero}: {linha!r}, esperado 'singular<TAB>plural' "
+                "em minusculas sem acento"
+            )
+        nomes.append((partes[0], partes[1]))
+    return tuple(nomes)

@@ -45,6 +45,16 @@ uv run --with-requirements requirements-dev.txt pytest tests/
   O teste amplo usa só nomes fora do treino, contém o split de teste
   original, cobre 12 entidades, e a referência de cada entidade nova roda
   como app real.
+  Nomes colhidos entram com `EXEMPLOS_POR_COLHIDO` exemplos cada, sem mexer
+  nos exemplos de antes, e um nome já usado (de teste, original ou extra) é
+  recusado com erro. O leitor do TSV aponta a linha fora do formato.
+- `test_colher_nomes_classe.py` — as regras de plural (`transacao`, `animal`,
+  `funil`, `item`, `fornecedor`), a dobra de acento que casa a Wikipédia com o
+  identificador, a extração só de classe de uma palavra (`ItemPedido` e
+  `class` dentro de string ficam de fora), o filtro pela Wikipédia e pelos
+  nomes já usados, a regressão da primeira colheita (`eliminar`, `object`,
+  `emitido` e `visitas` passavam), a fonte por sufixo da Wikipédia, o corte
+  pelos mais frequentes, e a leitura de JSONL com `\u2028` dentro do texto.
 - `test_restore_case.py` — o nome do módulo em `from`/`import` fica intacto,
   nomes de biblioteca são restaurados, strings e comentários não são tocados, e
   código que não tokeniza vira `ValueError`.

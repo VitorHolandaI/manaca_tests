@@ -20,29 +20,21 @@ import argparse
 import hashlib
 import json
 import random
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 
-from nomes_entidades import NOMES_ENTIDADES, NOMES_EXTRAS, NOMES_TESTE_AMPLO
+from molde_fastapi import Campo, Entidade, montar_saida, nome_de_classe
+from nomes_entidades import (
+    NOMES_ENTIDADES,
+    NOMES_EXTRAS,
+    NOMES_TESTE_AMPLO,
+    carregar_nomes_colhidos,
+)
 
 PREAMBULO = (
     "Abaixo esta uma instrucao que descreve uma tarefa. "
     "Escreva uma resposta que atenda adequadamente ao pedido."
 )
-
-
-@dataclass(frozen=True)
-class Campo:
-    nome: str
-    tipo: str
-    nulo: bool = False
-
-
-@dataclass(frozen=True)
-class Entidade:
-    singular: str
-    plural: str
-    campos: tuple[Campo, ...]
 
 
 # conjuntos de campos: o ciclo abaixo da o conjunto fixo de cada entidade, que
@@ -71,6 +63,8 @@ ENTIDADES: tuple[Entidade, ...] = tuple(
 
 # poucos exemplos por extra: o volume vem do numero de nomes, nao de repeticao
 EXEMPLOS_POR_EXTRA = 6
+# colhidos sao milhares (colher_nomes_classe.py): 2 cada segura o tamanho do SFT
+EXEMPLOS_POR_COLHIDO = 2
 ENTIDADES_EXTRAS: tuple[Entidade, ...] = tuple(
     Entidade(singular, plural, CONJUNTOS_CAMPOS[0]) for singular, plural in NOMES_EXTRAS
 )
@@ -82,16 +76,6 @@ ENTIDADES_TESTE_AMPLO: tuple[Entidade, ...] = tuple(
 
 # entidades inteiras fora do treino: variar so a frase deixaria o teste decorado
 ENTIDADES_TESTE: tuple[str, ...] = ("comentario", "endereco")
-
-TIPOS_SQL = {"str": "String", "int": "Integer", "float": "Numeric", "bool": "Boolean"}
-
-
-def nome_de_classe(nome: str) -> str:
-    """Converte o nome da entidade na convencao de classe Python.
-
-    Exemplo: nome_de_classe('endereco') == 'Endereco'
-    """
-    return nome[:1].upper() + nome[1:]
 
 
 def capitalizar_frase(texto: str) -> str:
@@ -146,155 +130,6 @@ INSTRUCOES = {
 }
 
 
-def _cabecalho(ent: Entidade, comentar: bool) -> str:
-    linhas = [
-        "from fastapi import FastAPI, HTTPException, Depends",
-        "from sqlalchemy import create_engine, Column, Integer, String, Boolean, Numeric",
-        "from sqlalchemy.orm import declarative_base, sessionmaker, Session",
-        "from pydantic import BaseModel",
-        "",
-    ]
-    if comentar:
-        linhas.append("# Banco de dados SQLite em arquivo local")
-    linhas += [
-        'engine = create_engine("sqlite:///./app.db", connect_args={"check_same_thread": False})',
-        "sessao_local = sessionmaker(bind=engine, autoflush=False, autocommit=False)",
-        "Base = declarative_base()",
-        "",
-    ]
-    return "\n".join(linhas)
-
-
-def _modelo(ent: Entidade, comentar: bool) -> str:
-    linhas = [f"class {nome_de_classe(ent.singular)}(Base):"]
-    if comentar:
-        linhas.append(f"    # Tabela de {ent.plural} no banco")
-    linhas += [
-        f'    __tablename__ = "{ent.plural}"',
-        "    id = Column(Integer, primary_key=True, index=True)",
-    ]
-    for campo in ent.campos:
-        tipo = TIPOS_SQL[campo.tipo]
-        nulo = "True" if campo.nulo else "False"
-        linhas.append(f"    {campo.nome} = Column({tipo}, nullable={nulo})")
-    linhas += ["", "Base.metadata.create_all(bind=engine)", ""]
-    return "\n".join(linhas)
-
-
-def _sessao(comentar: bool) -> str:
-    linhas = ["def obter_sessao():"]
-    if comentar:
-        linhas.append("    # Abre a sessao e garante o close no fim")
-    linhas += [
-        "    sessao = sessao_local()",
-        "    try:",
-        "        yield sessao",
-        "    finally:",
-        "        sessao.close()",
-        "",
-    ]
-    return "\n".join(linhas)
-
-
-def _schemas(ent: Entidade, comentar: bool) -> str:
-    classe = nome_de_classe(ent.singular)
-    entrada = [f"class {classe}Criar(BaseModel):"]
-    saida = [f"class {classe}Resposta(BaseModel):", "    id: int"]
-    for campo in ent.campos:
-        entrada.append(f"    {campo.nome}: {campo.tipo}")
-        saida.append(f"    {campo.nome}: {campo.tipo}")
-    saida += ["", '    model_config = {"from_attributes": True}']
-    bloco = []
-    if comentar:
-        bloco.append(f"# Schema de entrada para criar {ent.singular}")
-    bloco += entrada + [""]
-    if comentar:
-        bloco.append("# Schema de saida com o id gerado")
-    bloco += saida + [""]
-    return "\n".join(bloco)
-
-
-def _app() -> str:
-    return "app = FastAPI()\n"
-
-
-def _rota(ent: Entidade, op: str, comentar: bool) -> str:
-    s, p = ent.singular, ent.plural
-    classe = nome_de_classe(s)
-    if op == "criar":
-        corpo = [
-            f'@app.post("/{p}", response_model={classe}Resposta, status_code=201)',
-            f"def criar_{s}(dados: {classe}Criar, sessao: Session = Depends(obter_sessao)):",
-            f'    """Cadastra um novo {s} e devolve o registro com o id gerado."""',
-            "    # Grava o novo registro e devolve ele com o id",
-            f"    registro = {classe}(**dados.model_dump())",
-            "    sessao.add(registro)",
-            "    sessao.commit()",
-            "    sessao.refresh(registro)",
-            "    return registro",
-        ]
-    elif op == "listar":
-        corpo = [
-            f'@app.get("/{p}", response_model=list[{classe}Resposta])',
-            f"def listar_{p}(sessao: Session = Depends(obter_sessao)):",
-            f'    """Devolve todos os {p} cadastrados no banco."""',
-            "    # Devolve todos os registros da tabela",
-            f"    return sessao.query({classe}).all()",
-        ]
-    elif op == "buscar":
-        corpo = [
-            f'@app.get("/{p}/{{item_id}}", response_model={classe}Resposta)',
-            f"def buscar_{s}(item_id: int, sessao: Session = Depends(obter_sessao)):",
-            f'    """Busca um {s} pelo id e devolve 404 se nao existir."""',
-            f"    registro = sessao.query({classe}).filter({classe}.id == item_id).first()",
-            "    if registro is None:",
-            f'        raise HTTPException(status_code=404, detail="{classe} nao encontrado")',
-            "    return registro",
-        ]
-    elif op == "atualizar":
-        corpo = [
-            f'@app.put("/{p}/{{item_id}}", response_model={classe}Resposta)',
-            f"def atualizar_{s}(item_id: int, dados: {classe}Criar,",
-            "                  sessao: Session = Depends(obter_sessao)):",
-            f'    """Atualiza um {s} pelo id e devolve 404 se nao existir."""',
-            f"    registro = sessao.query({classe}).filter({classe}.id == item_id).first()",
-            "    if registro is None:",
-            f'        raise HTTPException(status_code=404, detail="{classe} nao encontrado")',
-            "    # Copia os campos do corpo para o registro",
-            "    for chave, valor in dados.model_dump().items():",
-            "        setattr(registro, chave, valor)",
-            "    sessao.commit()",
-            "    sessao.refresh(registro)",
-            "    return registro",
-        ]
-    else:
-        corpo = [
-            f'@app.delete("/{p}/{{item_id}}")',
-            f"def deletar_{s}(item_id: int, sessao: Session = Depends(obter_sessao)):",
-            f'    """Remove um {s} pelo id e devolve 404 se nao existir."""',
-            f"    registro = sessao.query({classe}).filter({classe}.id == item_id).first()",
-            "    if registro is None:",
-            f'        raise HTTPException(status_code=404, detail="{classe} nao encontrado")',
-            "    sessao.delete(registro)",
-            "    sessao.commit()",
-            f'    return {{"detalhe": "{classe} removido com sucesso"}}',
-        ]
-    return "\n".join(corpo) + "\n"
-
-
-def montar_saida(ent: Entidade, ops: tuple[str, ...], comentar: bool) -> str:
-    partes = [
-        _cabecalho(ent, comentar),
-        _modelo(ent, comentar),
-        _sessao(comentar),
-        _schemas(ent, comentar),
-        _app(),
-    ]
-    for op in ops:
-        partes.append(_rota(ent, op, comentar))
-    return "\n".join(partes).strip() + "\n"
-
-
 def _sortear_campos(
     ent: Entidade, rng: random.Random, fixas: tuple[str, ...]
 ) -> Entidade:
@@ -321,7 +156,32 @@ def exemplos_extras(seed: int) -> list[dict[str, str]]:
 
     Exemplo: len(exemplos_extras(1234)) == len(NOMES_EXTRAS) * EXEMPLOS_POR_EXTRA
     """
-    rng = random.Random(seed + 2)
+    return _poucos_exemplos(
+        ENTIDADES_EXTRAS, EXEMPLOS_POR_EXTRA, random.Random(seed + 2)
+    )
+
+
+def exemplos_colhidos(
+    seed: int, nomes: tuple[tuple[str, str], ...]
+) -> list[dict[str, str]]:
+    """EXEMPLOS_POR_COLHIDO exemplos de cada nome colhido; recusa nome ja usado.
+
+    Exemplo: exemplos_colhidos(1234, (("fatia", "fatias"),))
+    """
+    usados = {e.singular for e in ENTIDADES + ENTIDADES_EXTRAS + ENTIDADES_TESTE_AMPLO}
+    repetidos = sorted({s for s, _ in nomes} & (usados | set(ENTIDADES_TESTE)))
+    if repetidos:
+        raise ValueError(
+            f"nomes colhidos ja usados pelo gen_dataset: {repetidos}, "
+            "esperado so nome inedito (o de teste vazaria pro treino)"
+        )
+    entidades = tuple(Entidade(s, p, CONJUNTOS_CAMPOS[0]) for s, p in nomes)
+    return _poucos_exemplos(entidades, EXEMPLOS_POR_COLHIDO, random.Random(seed + 3))
+
+
+def _poucos_exemplos(
+    entidades: tuple[Entidade, ...], por_entidade: int, rng: random.Random
+) -> list[dict[str, str]]:
     combinacoes = [
         (op, molde, comentar)
         for op, _, _ in COMANDOS
@@ -329,8 +189,8 @@ def exemplos_extras(seed: int) -> list[dict[str, str]]:
         for comentar in (True, False)
     ]
     exemplos: list[dict[str, str]] = []
-    for ent_base in ENTIDADES_EXTRAS:
-        for op, molde, comentar in rng.sample(combinacoes, EXEMPLOS_POR_EXTRA):
+    for ent_base in entidades:
+        for op, molde, comentar in rng.sample(combinacoes, por_entidade):
             ent = _sortear_campos(ent_base, rng, ())
             exemplos.append(_exemplo(ent, op, molde, comentar))
     return exemplos
@@ -353,7 +213,9 @@ def exemplos_teste_amplo(seed: int) -> list[dict[str, str]]:
 
 
 def gerar_exemplos(
-    seed: int, fixas: tuple[str, ...] = ENTIDADES_TESTE
+    seed: int,
+    fixas: tuple[str, ...] = ENTIDADES_TESTE,
+    colhidos: tuple[tuple[str, str], ...] = (),
 ) -> list[dict[str, str]]:
     rng = random.Random(seed)
     # rng proprio dos campos: o do shuffle segue igual e o teste nao muda
@@ -382,7 +244,7 @@ def gerar_exemplos(
     rng.shuffle(exemplos)
     # extras no fim: o shuffle acima fica igual e o split de teste nao muda;
     # a ordem de treino quem embaralha e o Trainer
-    return exemplos + exemplos_extras(seed)
+    return exemplos + exemplos_extras(seed) + exemplos_colhidos(seed, colhidos)
 
 
 def separar_teste(
@@ -416,9 +278,15 @@ def main() -> int:
     ap.add_argument("--out-teste", default="data/fastapi_ptbr_teste.jsonl")
     ap.add_argument("--out-teste-amplo", default="data/fastapi_ptbr_teste_amplo.jsonl")
     ap.add_argument("--seed", type=int, default=1234)
+    ap.add_argument("--nomes-colhidos", default="scripts/nomes_colhidos.tsv")
     args = ap.parse_args()
 
-    treino, teste = separar_teste(gerar_exemplos(args.seed), ENTIDADES_TESTE)
+    tsv = Path(args.nomes_colhidos)
+    colhidos = carregar_nomes_colhidos(tsv) if tsv.is_file() else ()
+    if not colhidos:
+        print(f"aviso: sem nomes colhidos em {tsv}; rode colher_nomes_classe.py")
+    exemplos = gerar_exemplos(args.seed, colhidos=colhidos)
+    treino, teste = separar_teste(exemplos, ENTIDADES_TESTE)
     destino, destino_teste = Path(args.out), Path(args.out_teste)
     info = escrever(treino, destino)
     info_teste = escrever(teste, destino_teste)
@@ -443,6 +311,8 @@ def main() -> int:
         "observacao": "caso real de Python; exige o tokenizer v2 (sem Lowercase)",
         "campos": "sorteados por exemplo no treino; fixos nas entidades de teste",
         "entidades_extras": len(ENTIDADES_EXTRAS),
+        "nomes_colhidos": len(colhidos),
+        "arquivo_nomes_colhidos": str(tsv) if colhidos else None,
     }
     (destino.parent / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"

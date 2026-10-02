@@ -224,3 +224,33 @@ def test_referencia_do_teste_amplo_roda_o_crud(
     criado = app.cliente.post(rota, json=app.payload())
     assert criado.status_code == 201, criado.text
     assert app.cliente.get(f"{rota}/{criado.json()['id']}").status_code == 200
+
+
+def test_cada_colhido_entra_com_poucos_exemplos() -> None:
+    from gen_dataset import EXEMPLOS_POR_COLHIDO
+
+    colhidos = (("fatia", "fatias"), ("lagoa", "lagoas"))
+    sem = gerar_exemplos(1234)
+    com = gerar_exemplos(1234, colhidos=colhidos)
+    assert com[: len(sem)] == sem
+    for singular, _ in colhidos:
+        marca = f"class {nome_de_classe(singular)}(Base):"
+        assert sum(marca in r["output"] for r in com) == EXEMPLOS_POR_COLHIDO
+
+
+@pytest.mark.parametrize("nome", ["comentario", "recibo", "usuario"])
+def test_colhido_que_ja_existe_e_recusado(nome: str) -> None:
+    with pytest.raises(ValueError, match=nome):
+        gerar_exemplos(1234, colhidos=((nome, nome + "s"),))
+
+
+def test_carregar_nomes_colhidos_le_e_aponta_linha_ruim(tmp_path: Path) -> None:
+    from nomes_entidades import carregar_nomes_colhidos
+
+    bom = tmp_path / "bom.tsv"
+    bom.write_text("fatia\tfatias\nlagoa\tlagoas\n", encoding="utf-8")
+    assert carregar_nomes_colhidos(bom) == (("fatia", "fatias"), ("lagoa", "lagoas"))
+    ruim = tmp_path / "ruim.tsv"
+    ruim.write_text("fatia\tfatias\nLagoa lagoas\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"ruim\.tsv:2"):
+        carregar_nomes_colhidos(ruim)
