@@ -303,6 +303,17 @@ def _prompt(instruction: str) -> str:
     return f"{PREAMBULO}\n\n### Instrucao:\n{instruction}\n\n### Resposta:\n"
 
 
+def cortar_no_fim(ids: list[int], fins: set[int]) -> list[int]:
+    """Ids gerados ate o primeiro token de fim (eos ou pad), exclusive.
+
+    Exemplo: cortar_no_fim([5, 6, 9, 7], {9}) == [5, 6]
+    """
+    for i, token in enumerate(ids):
+        if token in fins:
+            return ids[:i]
+    return ids
+
+
 def _gerar_em_lotes(
     modelo, tok, prompts: list[str], device: str, max_novos: int, lote: int
 ) -> list[str]:
@@ -339,8 +350,10 @@ def _gerar_em_lotes(
                 pad_token_id=tok.pad_token_id,
             )
         largura = int(entrada["input_ids"].shape[1])
+        fins = {t for t in (tok.eos_token_id, tok.pad_token_id) if t is not None}
         for seq in out:
-            saidas.append(tok.decode(seq[largura:], skip_special_tokens=True).strip())
+            gerados = cortar_no_fim(seq[largura:].tolist(), fins)
+            saidas.append(tok.decode(gerados, skip_special_tokens=True).strip())
     return saidas
 
 

@@ -4,7 +4,7 @@ Atualizado em 2026-10-03.
 
 ## Resultado
 
-Depois de um pré-treino continuado grande e de um ajuste fino com QLoRA, o Manacá-1B escreve uma API FastAPI + SQLAlchemy em português, com a caixa certa e sem nenhum script de conserto depois. Nos 32 pedidos de teste, sobre duas entidades que o modelo nunca viu no treino, todas as respostas compilam, sobem e passam nas requisições do teste. Num teste mais amplo, com 12 entidades inéditas, o melhor adapter compila 88% e roda 87%, mas a classe sai com o nome certo em só 32% dos pedidos. O nome da classe é o problema em aberto.
+Depois de um pré-treino continuado grande e de um ajuste fino com QLoRA, o Manacá-1B escreve uma API FastAPI + SQLAlchemy em português, com a caixa certa e sem nenhum script de conserto depois. Nos 32 pedidos de teste, sobre duas entidades que o modelo nunca viu no treino, todas as respostas compilam, sobem e passam nas requisições do teste. Num teste mais amplo, com 12 entidades inéditas, o melhor adapter do Manacá compila 88% e roda 87%, mas a classe sai com o nome certo em só 32% dos pedidos. O Qwen2.5-0.5B, treinado no mesmo dataset, acerta 100%. O nome da classe é o problema em aberto.
 
 | Rodada | Pós-processamento | case_rate | entidade_rate | rotas | compile_rate | runs_rate |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -141,7 +141,20 @@ O teste de duas entidades era otimista: `Endereco` saía certo por sorte do cami
 
 A última linha testou a escala. O script `colher_nomes_classe.py` juntou 2.000 nomes de duas fontes: classes de uma palavra do código colhido e palavras da Wikipédia com sufixo de substantivo (`-ção`, `-mento`, `-dade`). Cada nome entrou com 2 exemplos, e o treino foi de 3.932 para 7.932 exemplos, com 2 h 11 de SFT. Sintaxe e execução melhoraram (compile_rate 0,88, runs_rate 0,87), mas o entidade_rate passou só de 0,29 para 0,32. Seis vezes mais nomes quase não mexeram na cópia do nome.
 
-Com isso a escala de dados fica descartada como solução para o nome da classe. O passo seguinte é o tokenizer marcar a maiúscula com uma peça própria, de modo que `Comentario` vire `<maiúscula>` seguido da mesma peça `comentario` da instrução. Isso exige refazer o tokenizer e o CPT e passa a precisar de um passo de decodificação fora do modelo.
+Com isso a escala de dados fica descartada como solução para o nome da classe.
+
+Para saber se o limite era do dataset ou do Manacá, o mesmo SFT (7.932 exemplos, 3 épocas, QLoRA) rodou no [Qwen2.5-0.5B](https://huggingface.co/Qwen/Qwen2.5-0.5B) base, que tem metade do tamanho, licença Apache 2.0 e um tokenizer BPE de bytes que já trata maiúsculas. Sem nenhum CPT:
+
+| Teste amplo (182 pedidos) | entidade_rate | compile_rate | runs_rate | docstring_rate | rotas | tempo de SFT |
+| --- | --- | --- | --- | --- | --- | --- |
+| Manacá-1B + CPT grande + 2.000 nomes | 0,32 | 0,88 | 0,87 | 0,88 | 0,74 | 2 h 11 |
+| Qwen2.5-0.5B, sem CPT | 1,0 | 1,0 | 1,0 | 1,0 | 0,945 | 54 min |
+
+O dataset e o eval estão certos: um modelo que já sabe caixa aprende a tarefa inteira só com o SFT. O limite é o pré-treino do Manacá, todo em minúsculas, que 35 milhões de tokens de CPT não corrigem. O Qwen3, por comparação, foi pré-treinado em 36 trilhões de tokens ([relatório técnico](https://arxiv.org/html/2505.09388)). O Qwen3 ficou de fora do controle porque exige transformers 4.51, e o stack da 3090 usa o 4.46.3.
+
+Para rodar o Qwen, o `train_qlora.py` passou a trocar o pad quando ele é o próprio EOS (no Qwen os dois são `<|endoftext|>`, e o collator apagaria o EOS dos labels), e o eval passou a cortar a saída no primeiro EOS ou pad.
+
+O próximo passo, para manter o Manacá como base, é o tokenizer marcar a maiúscula com uma peça própria, como em [Land e Meister](https://arxiv.org/html/2608.08847): `Comentario` vira `<maiúscula>` seguido da mesma peça `comentario` da instrução. O marcador vai antes do espaço que precede a palavra, para que a peça continue sendo `▁comentario`. O CPT do marcador vai usar cerca de 100 milhões de tokens a mais de português do [GigaVerbo-v2](https://huggingface.co/datasets/Polygl0t/gigaverbo-v2), o corpus do projeto Tucano 2, filtrado por qualidade.
 
 ## Problemas encontrados no caminho
 

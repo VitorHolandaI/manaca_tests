@@ -12,6 +12,7 @@ from eval_code import (
     _gerar_em_lotes,
     _prompt,
     avaliar,
+    cortar_no_fim,
     docstrings_capitalizadas,
     entidade_certa,
     exigencias,
@@ -269,3 +270,11 @@ def test_avaliar_relata_entidade_rate() -> None:
     trocada = MODELO_COMENTARIO.replace("Comentario", "Membro")
     assert avaliar(ref, {"a": MODELO_COMENTARIO}, None)["entidade_rate"] == 1.0
     assert avaliar(ref, {"a": trocada}, None)["entidade_rate"] == 0.0
+
+
+def test_cortar_no_fim_para_no_primeiro_eos_ou_pad() -> None:
+    # regressao: o pad do Qwen (<|fim_pad|>) nao e token especial, e o
+    # skip_special_tokens deixava ele colado no codigo de quem acabou antes
+    assert cortar_no_fim([5, 6, 9, 7, 9], {9}) == [5, 6]
+    assert cortar_no_fim([5, 6, 8, 9], {8, 9}) == [5, 6]
+    assert cortar_no_fim([5, 6], {9}) == [5, 6]

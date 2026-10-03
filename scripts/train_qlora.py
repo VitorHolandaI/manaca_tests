@@ -32,6 +32,7 @@ import argparse
 import json
 import random
 from pathlib import Path
+from typing import Protocol
 
 from expandir_vocab import expandir_modelo
 from subword_sampling import AmostradorUnigram, ids_com_amostragem
@@ -77,6 +78,44 @@ def carregar_jsonl(caminho: Path) -> list[dict[str, str]]:
     if not linhas:
         raise ValueError(f"dataset vazio: {caminho}")
     return linhas
+
+
+class TokenizerComPad(Protocol):
+    eos_token: str
+    pad_token: str | None
+
+    @property
+    def eos_token_id(self) -> int: ...
+
+    @property
+    def pad_token_id(self) -> int | None: ...
+
+    def get_added_vocab(self) -> dict[str, int]: ...
+
+
+def garantir_pad_distinto(tokenizer: TokenizerComPad) -> str | None:
+    """Troca o pad por um token especial existente quando ele e o proprio EOS.
+
+    O collator do transformers 4.46.3 poe -100 em todo label igual ao pad, e
+    pad == eos (Qwen3 base) apagaria o EOS do treino. Devolve o pad novo.
+    """
+    if (
+        tokenizer.pad_token is not None
+        and tokenizer.pad_token_id != tokenizer.eos_token_id
+    ):
+        return None
+    candidatos = sorted(
+        t
+        for t in tokenizer.get_added_vocab()
+        if "pad" in t and t != tokenizer.eos_token
+    )
+    if not candidatos:
+        raise ValueError(
+            f"pad ausente ou igual ao eos {tokenizer.eos_token!r} e nenhum token "
+            "especial com 'pad' no vocabulario; esperado um pad distinto do eos"
+        )
+    tokenizer.pad_token = candidatos[0]
+    return candidatos[0]
 
 
 def ids_marcador(tokenizer, texto: str) -> list[int]:
@@ -212,9 +251,7 @@ class CollatorComAmostragem:
             "attention_mask": torch.tensor(
                 [[1] * len(x) + [0] * (largura - len(x)) for x in entradas]
             ),
-            "labels": torch.tensor(
-                [x + [-100] * (largura - len(x)) for x in rotulos]
-            ),
+            "labels": torch.tensor([x + [-100] * (largura - len(x)) for x in rotulos]),
         }
 
 
@@ -296,8 +333,9 @@ def treinar(args: argparse.Namespace) -> None:
         ) from err
 
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer or args.model)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+    pad_novo = garantir_pad_distinto(tokenizer)
+    if pad_novo:
+        print(f"[qlora] pad era o eos; usando {pad_novo} como pad")
 
     modelo, lora = _carregar_modelo(args, torch)
 
@@ -364,9 +402,7 @@ def treinar(args: argparse.Namespace) -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(
-        description="QLoRA Manaca-1B (FastAPI PT-BR)"
-    )
+    ap = argparse.ArgumentParser(description="QLoRA Manaca-1B (FastAPI PT-BR)")
     ap.add_argument("--model", default="AIInstituteLNCC/manaca-1b-base")
     ap.add_argument("--data", default="data/fastapi_ptbr.jsonl")
     ap.add_argument(

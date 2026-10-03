@@ -55,6 +55,9 @@ uv run --with-requirements requirements-dev.txt pytest tests/
   nomes já usados, a regressão da primeira colheita (`eliminar`, `object`,
   `emitido` e `visitas` passavam), a fonte por sufixo da Wikipédia, o corte
   pelos mais frequentes, e a leitura de JSONL com `\u2028` dentro do texto.
+- `test_train_qlora.py` — `garantir_pad_distinto` com um `TokenizerFalso`:
+  pad igual ao EOS (o caso do Qwen) vira um token de pad já existente, pad
+  distinto fica como está, e sem candidato o erro cita o EOS.
 - `test_restore_case.py` — o nome do módulo em `from`/`import` fica intacto,
   nomes de biblioteca são restaurados, strings e comentários não são tocados, e
   código que não tokeniza vira `ValueError`.
@@ -74,6 +77,7 @@ uv run --with-requirements requirements-dev.txt pytest tests/
   split de teste dá `runs_rate` 1.0 sem restauro e sem reparo.
   O `entidade_rate` tem regressão própria: `class Membro(Base)` no lugar de
   `Comentario` reprova, mesmo compilando e com a rota certa.
+  `cortar_no_fim` corta a geração no primeiro EOS ou pad.
 - `test_sandbox_gerado.py` — o `rodar_rotas` aceita o app completo **e** uma
   saída de uma operação só: o dataset gera uma operação por exemplo, então uma
   saída de `delete` não tem POST e tem de passar mesmo assim (a primeira versão
