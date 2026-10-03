@@ -1,10 +1,10 @@
 # Manacá-1B gerando FastAPI em português, com maiúscula
 
-Atualizado em 2026-10-02.
+Atualizado em 2026-10-03.
 
 ## Resultado
 
-Depois de um pré-treino continuado grande e de um ajuste fino com QLoRA, o Manacá-1B escreve uma API FastAPI + SQLAlchemy em português, com a caixa certa e sem nenhum script de conserto depois. Nos 32 pedidos de teste, sobre duas entidades que o modelo nunca viu no treino, todas as respostas compilam, sobem e passam nas requisições do teste. Num teste mais amplo, com 12 entidades inéditas, esses números caem para 81% e 75%, e a classe sai com o nome certo em só 29% dos pedidos. O nome da classe é o problema em aberto.
+Depois de um pré-treino continuado grande e de um ajuste fino com QLoRA, o Manacá-1B escreve uma API FastAPI + SQLAlchemy em português, com a caixa certa e sem nenhum script de conserto depois. Nos 32 pedidos de teste, sobre duas entidades que o modelo nunca viu no treino, todas as respostas compilam, sobem e passam nas requisições do teste. Num teste mais amplo, com 12 entidades inéditas, o melhor adapter compila 88% e roda 87%, mas a classe sai com o nome certo em só 32% dos pedidos. O nome da classe é o problema em aberto.
 
 | Rodada | Pós-processamento | case_rate | entidade_rate | rotas | compile_rate | runs_rate |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -135,10 +135,13 @@ Com só duas entidades de teste, a diferença entre 0,5 e 0,75 era de 8 pedidos 
 | campos fixos por entidade | 0,14 | 0,68 | 0,64 | 0,67 | 0,5 |
 | campos sorteados | 0,13 | 0,86 | 0,84 | 0,86 | 0,5 |
 | campos sorteados + 266 nomes extras | 0,29 | 0,81 | 0,75 | 0,81 | 0,75 |
+| campos sorteados + 266 extras + 2.000 nomes colhidos | 0,32 | 0,88 | 0,87 | 0,88 | n/d |
 
 O teste de duas entidades era otimista: `Endereco` saía certo por sorte do caminho de peças, não por regra aprendida. Sortear os campos melhorou a sintaxe e não mudou a cópia do nome. Os nomes extras dobraram o entidade_rate, mas a partir de um patamar baixo.
 
-Os próximos passos possíveis são escalar os nomes em dez vezes, colhendo nomes de classe em português do código já colhido, ou mudar o tokenizer para marcar a maiúscula com uma peça própria, de modo que `Comentario` vire `<maiúscula>` seguido da mesma peça `comentario` da instrução. O segundo ataca a causa, mas exige refazer o tokenizer e o CPT e passa a precisar de um passo de decodificação fora do modelo.
+A última linha testou a escala. O script `colher_nomes_classe.py` juntou 2.000 nomes de duas fontes: classes de uma palavra do código colhido e palavras da Wikipédia com sufixo de substantivo (`-ção`, `-mento`, `-dade`). Cada nome entrou com 2 exemplos, e o treino foi de 3.932 para 7.932 exemplos, com 2 h 11 de SFT. Sintaxe e execução melhoraram (compile_rate 0,88, runs_rate 0,87), mas o entidade_rate passou só de 0,29 para 0,32. Seis vezes mais nomes quase não mexeram na cópia do nome.
+
+Com isso a escala de dados fica descartada como solução para o nome da classe. O passo seguinte é o tokenizer marcar a maiúscula com uma peça própria, de modo que `Comentario` vire `<maiúscula>` seguido da mesma peça `comentario` da instrução. Isso exige refazer o tokenizer e o CPT e passa a precisar de um passo de decodificação fora do modelo.
 
 ## Problemas encontrados no caminho
 
