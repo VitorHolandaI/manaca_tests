@@ -45,3 +45,22 @@ def test_remapear_copia_pela_peca_e_inicia_marcadores_pelas_maiusculas() -> None
     media = entrada_velha[[2, 5]].mean(dim=0)
     assert entrada[3].tolist() == pytest.approx(media.tolist())
     assert entrada[4].tolist() == pytest.approx(media.tolist())
+
+
+@precisa_do_torch
+def test_marcador_que_ja_existe_e_copiado_e_so_o_novo_e_iniciado() -> None:
+    # v3 -> v4: <|maj|> e <|mai|> ja foram treinados no CPT v3; so <|cola|> nasce
+    from caixa_marcada import COLA
+    from test_expandir_vocab import ModeloFalso
+
+    origem = {"<unk>": 0, "▁a": 1, MAJ: 2, MAI: 3, "nua": 4}
+    destino = {"<unk>": 0, "▁a": 1, MAJ: 2, MAI: 3, COLA: 4}
+    modelo = ModeloFalso(len(origem))
+    velha = modelo.entrada.weight.detach().clone()
+
+    copiadas, iniciadas = remapear_modelo(modelo, origem, destino, (COLA,))  # type: ignore[arg-type]
+
+    assert (copiadas, iniciadas) == (4, 1)
+    nova = modelo.entrada.weight
+    assert nova[2].tolist() == velha[2].tolist()
+    assert nova[4].tolist() == pytest.approx(velha.mean(dim=0).tolist())

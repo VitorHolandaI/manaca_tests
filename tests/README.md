@@ -63,14 +63,21 @@ uv run --with-requirements requirements-dev.txt pytest tests/
 - `test_caixa_marcada.py` — o lugar do marcador (antes do espaço, camelCase,
   sigla), a ida e volta exata em casos difíceis (`İ`, `ß`, `ǅ`, `ª`, espaço
   duplo) e em todo o dataset, a recusa de texto que já tem o marcador, o
-  marcador solto que o modelo pode gerar, e a detecção do v3 pelo vocab.
+  marcador solto que o modelo pode gerar, e a detecção do v3 pelo vocab. Com
+  fronteira (v4): toda palavra na forma com espaço, `<|cola|>` solto que
+  some, e a ida e volta exata nos mesmos casos e no dataset.
 - `test_build_tokenizer_v3.py` — `pecas_v3` fica com as originais e as nuas
   minúsculas e recusa um v2 que mudou o prefixo; com os arquivos reais (pula
   sem eles), os marcadores ficam no fim, nenhuma peça nova tem maiúscula, a
   classe usa a mesma peça da instrução e o texto do dataset volta igual.
+- `test_build_tokenizer_v4.py` — o v4 é o original com os 3 marcadores nos
+  ids 64000 a 64002, a palavra colada usa a mesma peça da instrução (a
+  regressão de `criar_agenda`), e o texto do dataset volta igual. Pula sem
+  o tokenizer original ou sem a lib `tokenizers`.
 - `test_remapear_vocab.py` — o mapa por peça, a recusa de peça que a origem
   não tem, e o remapeamento de entrada e saída num `ModeloFalso` (o mesmo de
-  `test_expandir_vocab.py`, que agora também encolhe).
+  `test_expandir_vocab.py`, que agora também encolhe). Marcador que a origem
+  já tem é copiado, e só o novo nasce.
 - `test_colher_gigaverbo.py` — os shards espalhados, o filtro educativo e
   não tóxico, a fonte no campo `licenca` e o teto de tokens, com parquet
   falso em row groups de 2 linhas.

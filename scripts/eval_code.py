@@ -36,7 +36,12 @@ import sys
 from pathlib import Path
 from typing import NamedTuple, TypedDict
 
-from caixa_marcada import TokenizerComVocab, codificar, decodificar, usa_caixa_marcada
+from caixa_marcada import (
+    TokenizerComVocab,
+    codificar_para,
+    decodificar,
+    usa_caixa_marcada,
+)
 from restore_case import nomes_a_restaurar, restaurar
 
 PREAMBULO = (
@@ -307,7 +312,9 @@ def _prompt(instruction: str) -> str:
 def prompts_para(itens: list[dict[str, str]], tok: TokenizerComVocab) -> list[str]:
     """Prompt Alpaca de cada item; com o tokenizer v3, com marcador de caixa."""
     prompts = [_prompt(e["instruction"]) for e in itens]
-    return [codificar(p) for p in prompts] if usa_caixa_marcada(tok) else prompts
+    if not usa_caixa_marcada(tok):
+        return prompts
+    return [codificar_para(tok, p) for p in prompts]
 
 
 def desfazer_marcador(textos: list[str], tok: TokenizerComVocab) -> list[str]:

@@ -34,7 +34,7 @@ import random
 from pathlib import Path
 from typing import Protocol
 
-from caixa_marcada import codificar, usa_caixa_marcada
+from caixa_marcada import codificar_para, usa_caixa_marcada
 from expandir_vocab import expandir_modelo
 from subword_sampling import AmostradorUnigram, ids_com_amostragem
 
@@ -173,13 +173,15 @@ def textos_de_treino(
     eos = tokenizer.eos_token or ""
     textos = [montar_texto(r["instruction"], r["output"], eos) for r in linhas]
     if usa_caixa_marcada(tokenizer):
-        return [codificar(t) for t in textos]
+        return [codificar_para(tokenizer, t) for t in textos]
     return textos
 
 
 def marca_de_resposta(tokenizer: TokenizerDeTreino) -> str:
     """O `### Resposta:` como ele aparece no texto de treino (v3: com marcador)."""
-    return codificar(RESPOSTA_MARCA) if usa_caixa_marcada(tokenizer) else RESPOSTA_MARCA
+    if not usa_caixa_marcada(tokenizer):
+        return RESPOSTA_MARCA
+    return codificar_para(tokenizer, RESPOSTA_MARCA)
 
 
 def montar_dataset(linhas: list[dict[str, str]], tokenizer):

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from caixa_marcada import MAI, MAJ, codificar, decodificar
+from caixa_marcada import COLA, MAI, MAJ, codificar, decodificar
 
 
 @pytest.mark.parametrize(
@@ -79,3 +79,53 @@ def test_codificar_documentos_descarta_e_conta_o_que_tem_marcador() -> None:
     textos, descartados = codificar_documentos(["Oi", f"x {MAJ}", "Tchau"])
     assert textos == [f"{MAJ}oi", f"{MAJ}tchau"]
     assert descartados == 1
+
+
+@pytest.mark.parametrize(
+    ("texto", "esperado"),
+    [
+        ("criar_agendamento", f"{COLA} criar_{COLA} agendamento"),
+        ("x = Base", f"{COLA} x ={MAJ} base"),
+        ("query(Agendamento)", f"{COLA} query({COLA}{MAJ} agendamento)"),
+        ("AgendamentoCriar", f"{COLA}{MAJ} agendamento{COLA}{MAJ} criar"),
+        ("um agendamento", f"{COLA} um agendamento"),
+        ("iPhone", f"{COLA} i{COLA}{MAJ} phone"),
+    ],
+)
+def test_fronteira_poe_toda_palavra_na_forma_com_espaco(
+    texto: str, esperado: str
+) -> None:
+    assert codificar(texto, fronteira=True) == esperado
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "def criar_agendamento(dados: AgendamentoCriar):\n    pass\n",
+        "a  B\n\tC  DE fG hIJ kLm (x) y.z _w",
+        "ABİstanbul İzmir straße STRASSE ǅemal XMLs Nº 5",
+        "",
+    ],
+)
+def test_fronteira_ida_e_volta_e_exata(texto: str) -> None:
+    assert decodificar(codificar(texto, fronteira=True)) == texto
+
+
+def test_fronteira_ida_e_volta_em_todo_o_dataset() -> None:
+    from gen_dataset import exemplos_teste_amplo, gerar_exemplos
+
+    for exemplo in gerar_exemplos(1234)[:2000] + exemplos_teste_amplo(1234):
+        texto = exemplo["output"]
+        assert decodificar(codificar(texto, fronteira=True)) == texto
+
+
+def test_usa_fronteira_olha_o_vocabulario() -> None:
+    from caixa_marcada import usa_fronteira
+
+    assert usa_fronteira(TokenizerFalso({MAJ: 1, MAI: 2, COLA: 3}))
+    assert not usa_fronteira(TokenizerFalso({MAJ: 1, MAI: 2}))
+
+
+def test_cola_solta_do_modelo_some() -> None:
+    assert decodificar(f"x{COLA}") == "x"
+    assert decodificar(f"({COLA}{COLA} y") == "(y"

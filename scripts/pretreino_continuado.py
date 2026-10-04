@@ -6,8 +6,8 @@ porque a LoRA congela as embeddings. As linhas novas nascem da media das pecas
 antigas (scripts/expandir_vocab.py); o resto do modelo parte do base.
 
 Com o tokenizer v3 (build_tokenizer_v3.py) a maiuscula vira marcador: os
-textos passam por caixa_marcada.codificar e o modelo de origem (v2) e
-remapeado peca por peca (remapear_vocab.py). Isso liga sozinho pelo vocab.
+textos passam por caixa_marcada.codificar (v4: com fronteira) e o modelo de
+origem e remapeado peca por peca (remapear_vocab.py). Isso liga sozinho pelo vocab.
 
 Esquecimento: a val loss e medida ANTES do primeiro passo (linha de base) e a
 cada --eval-steps. Val subindo acima da linha de base = o modelo esta perdendo
@@ -31,7 +31,12 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from caixa_marcada import MARCADORES, codificar_documentos, usa_caixa_marcada
+from caixa_marcada import (
+    MARCADORES,
+    codificar_documentos,
+    usa_caixa_marcada,
+    usa_fronteira,
+)
 from expandir_vocab import expandir_modelo
 from remapear_vocab import remapear_modelo
 
@@ -110,7 +115,7 @@ def preparar_textos(textos: list[str], tokenizer: PreTrainedTokenizerBase) -> li
     """Codifica a maiuscula em marcador quando o tokenizer e o v3."""
     if not usa_caixa_marcada(tokenizer):
         return textos
-    codificados, descartados = codificar_documentos(textos)
+    codificados, descartados = codificar_documentos(textos, usa_fronteira(tokenizer))
     print(f"[cpt] caixa marcada; {descartados} docs com marcador literal sairam")
     return codificados
 
@@ -131,9 +136,10 @@ def _carregar(args: argparse.Namespace):  # type: ignore[no-untyped-def]
         destino = tokenizer.get_vocab()
         # origem igual ao destino: o modelo ja e v3 (retomada), nada a remapear
         if origem != destino:
-            copiadas, iniciadas = remapear_modelo(modelo, origem, destino, MARCADORES)
+            novos = tuple(m for m in MARCADORES if m in destino and m not in origem)
+            copiadas, iniciadas = remapear_modelo(modelo, origem, destino, novos)
             print(
-                f"[cpt] v3: {copiadas} linhas copiadas por peca, {iniciadas} marcadores"
+                f"[cpt] remapeado: {copiadas} linhas copiadas por peca, {iniciadas} novas"
             )
         return tokenizer, modelo
     novas = expandir_modelo(
@@ -198,7 +204,7 @@ def treinar(args: argparse.Namespace) -> None:
         json.dumps({"antes": base["eval_loss"], "depois": final["eval_loss"]}) + "\n",
         encoding="utf-8",
     )
-    print(f"[cpt] modelo + tokenizer v2 salvos em {args.out}")
+    print(f"[cpt] modelo + tokenizer ({args.tokenizer}) salvos em {args.out}")
 
 
 def main() -> int:
