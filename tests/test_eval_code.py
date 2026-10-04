@@ -278,3 +278,26 @@ def test_cortar_no_fim_para_no_primeiro_eos_ou_pad() -> None:
     assert cortar_no_fim([5, 6, 9, 7, 9], {9}) == [5, 6]
     assert cortar_no_fim([5, 6, 8, 9], {8, 9}) == [5, 6]
     assert cortar_no_fim([5, 6], {9}) == [5, 6]
+
+
+class TokenizerDeVocabFalso:
+    def __init__(self, marcado: bool) -> None:
+        from caixa_marcada import MAI, MAJ
+
+        self.vocab = {"a": 0, MAJ: 1, MAI: 2} if marcado else {"a": 0}
+
+    def get_vocab(self) -> dict[str, int]:
+        return self.vocab
+
+
+def test_prompts_e_saidas_passam_pelo_marcador_so_no_v3() -> None:
+    from caixa_marcada import MAJ
+    from eval_code import desfazer_marcador, prompts_para
+
+    v3, v2 = TokenizerDeVocabFalso(True), TokenizerDeVocabFalso(False)
+    itens = [{"instruction": "Crie a rota", "output": ""}]
+    assert f"{MAJ}crie a rota" in prompts_para(itens, v3)[0]  # type: ignore[arg-type]
+    assert "Crie a rota" in prompts_para(itens, v2)[0]  # type: ignore[arg-type]
+    saida = [f"class{MAJ} comentario({MAJ}base):"]
+    assert desfazer_marcador(saida, v3) == ["class Comentario(Base):"]  # type: ignore[arg-type]
+    assert desfazer_marcador(saida, v2) == saida  # type: ignore[arg-type]

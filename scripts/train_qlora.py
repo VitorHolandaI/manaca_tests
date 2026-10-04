@@ -34,6 +34,7 @@ import random
 from pathlib import Path
 from typing import Protocol
 
+from caixa_marcada import codificar, usa_caixa_marcada
 from expandir_vocab import expandir_modelo
 from subword_sampling import AmostradorUnigram, ids_com_amostragem
 
@@ -156,6 +157,31 @@ def checar_collator(collator, exemplo: dict) -> None:
     )
 
 
+class TokenizerDeTreino(Protocol):
+    eos_token: str | None
+
+    def get_vocab(self) -> dict[str, int]: ...
+
+
+def textos_de_treino(
+    linhas: list[dict[str, str]], tokenizer: TokenizerDeTreino
+) -> list[str]:
+    """Prompt + resposta + eos; com o tokenizer v3, a maiuscula vira marcador.
+
+    Exemplo: textos_de_treino([{"instruction": "x", "output": "y"}], tok)
+    """
+    eos = tokenizer.eos_token or ""
+    textos = [montar_texto(r["instruction"], r["output"], eos) for r in linhas]
+    if usa_caixa_marcada(tokenizer):
+        return [codificar(t) for t in textos]
+    return textos
+
+
+def marca_de_resposta(tokenizer: TokenizerDeTreino) -> str:
+    """O `### Resposta:` como ele aparece no texto de treino (v3: com marcador)."""
+    return codificar(RESPOSTA_MARCA) if usa_caixa_marcada(tokenizer) else RESPOSTA_MARCA
+
+
 def montar_dataset(linhas: list[dict[str, str]], tokenizer):
     """Dataset com o texto cru E uma tokenizacao deterministica.
 
@@ -165,8 +191,7 @@ def montar_dataset(linhas: list[dict[str, str]], tokenizer):
     """
     from datasets import Dataset
 
-    eos = tokenizer.eos_token or ""
-    textos = [montar_texto(r["instruction"], r["output"], eos) for r in linhas]
+    textos = textos_de_treino(linhas, tokenizer)
     codificado = tokenizer(textos, add_special_tokens=True)
     return Dataset.from_dict(
         {
@@ -343,7 +368,7 @@ def treinar(args: argparse.Namespace) -> None:
     treino = montar_dataset(linhas, tokenizer)
     print(f"[qlora] {len(treino)} exemplos de {args.data}")
 
-    ids_marca = ids_marcador(tokenizer, RESPOSTA_MARCA)
+    ids_marca = ids_marcador(tokenizer, marca_de_resposta(tokenizer))
     if args.subword_alpha > 0:
         amostrador = AmostradorUnigram(
             caminho_do_tokenizer_json(args.model), args.subword_alpha

@@ -4,7 +4,13 @@ import json
 from pathlib import Path
 
 import pytest
-from pretreino_continuado import carregar_textos, empacotar, indices_espacados
+from caixa_marcada import MAI, MAJ
+from pretreino_continuado import (
+    carregar_textos,
+    empacotar,
+    indices_espacados,
+    preparar_textos,
+)
 
 
 def test_empacotar_separa_docs_por_eos_e_corta_em_blocos() -> None:
@@ -65,3 +71,19 @@ def test_carregar_textos_aguenta_separador_unicode(tmp_path: Path) -> None:
         json.dumps({"text": texto}, ensure_ascii=False) + "\n", encoding="utf-8"
     )
     assert carregar_textos(corpus) == [texto]
+
+
+class TokenizerFalso:
+    def __init__(self, vocab: dict[str, int]) -> None:
+        self.vocab = vocab
+
+    def get_vocab(self) -> dict[str, int]:
+        return self.vocab
+
+
+def test_preparar_textos_so_codifica_com_o_v3() -> None:
+    v3 = TokenizerFalso({"a": 0, MAJ: 1, MAI: 2})
+    v2 = TokenizerFalso({"a": 0, "A": 1})
+    textos = ["Oi", f"tem {MAJ} literal"]
+    assert preparar_textos(textos, v3) == [f"{MAJ}oi"]  # type: ignore[arg-type]
+    assert preparar_textos(textos, v2) == textos  # type: ignore[arg-type]

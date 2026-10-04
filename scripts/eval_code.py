@@ -36,6 +36,7 @@ import sys
 from pathlib import Path
 from typing import NamedTuple, TypedDict
 
+from caixa_marcada import TokenizerComVocab, codificar, decodificar, usa_caixa_marcada
 from restore_case import nomes_a_restaurar, restaurar
 
 PREAMBULO = (
@@ -303,6 +304,17 @@ def _prompt(instruction: str) -> str:
     return f"{PREAMBULO}\n\n### Instrucao:\n{instruction}\n\n### Resposta:\n"
 
 
+def prompts_para(itens: list[dict[str, str]], tok: TokenizerComVocab) -> list[str]:
+    """Prompt Alpaca de cada item; com o tokenizer v3, com marcador de caixa."""
+    prompts = [_prompt(e["instruction"]) for e in itens]
+    return [codificar(p) for p in prompts] if usa_caixa_marcada(tok) else prompts
+
+
+def desfazer_marcador(textos: list[str], tok: TokenizerComVocab) -> list[str]:
+    """Volta a maiuscula nas saidas do v3; outros tokenizers passam intactos."""
+    return [decodificar(t) for t in textos] if usa_caixa_marcada(tok) else textos
+
+
 def cortar_no_fim(ids: list[int], fins: set[int]) -> list[int]:
     """Ids gerados ate o primeiro token de fim (eos ou pad), exclusive.
 
@@ -373,8 +385,10 @@ def gerar_com_modelo(
     )
     tok, modelo = _carregar_para_geracao(model_id, device)
     itens = ref[:limite] if limite else ref
-    prompts = [_prompt(e["instruction"]) for e in itens]
-    textos = _gerar_em_lotes(modelo, tok, prompts, device, max_novos, lote)
+    prompts = prompts_para(itens, tok)
+    textos = desfazer_marcador(
+        _gerar_em_lotes(modelo, tok, prompts, device, max_novos, lote), tok
+    )
     return {e["instruction"]: t for e, t in zip(itens, textos)}
 
 

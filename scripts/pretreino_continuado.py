@@ -5,6 +5,10 @@ E aqui que as 51148 linhas novas do v2 aprendem: o fine-tune e completo (bf16)
 porque a LoRA congela as embeddings. As linhas novas nascem da media das pecas
 antigas (scripts/expandir_vocab.py); o resto do modelo parte do base.
 
+Com o tokenizer v3 (build_tokenizer_v3.py) a maiuscula vira marcador: os
+textos passam por caixa_marcada.codificar e o modelo de origem (v2) e
+remapeado peca por peca (remapear_vocab.py). Isso liga sozinho pelo vocab.
+
 Esquecimento: a val loss e medida ANTES do primeiro passo (linha de base) e a
 cada --eval-steps. Val subindo acima da linha de base = o modelo esta perdendo
 o que sabia; pare e baixe o lr.
@@ -27,7 +31,9 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from caixa_marcada import MARCADORES, codificar_documentos, usa_caixa_marcada
 from expandir_vocab import expandir_modelo
+from remapear_vocab import remapear_modelo
 
 if TYPE_CHECKING:
     from datasets import Dataset
@@ -100,8 +106,17 @@ def montar_blocos(
     return Dataset.from_dict({"input_ids": blocos, "labels": [list(b) for b in blocos]})
 
 
+def preparar_textos(textos: list[str], tokenizer: PreTrainedTokenizerBase) -> list[str]:
+    """Codifica a maiuscula em marcador quando o tokenizer e o v3."""
+    if not usa_caixa_marcada(tokenizer):
+        return textos
+    codificados, descartados = codificar_documentos(textos)
+    print(f"[cpt] caixa marcada; {descartados} docs com marcador literal sairam")
+    return codificados
+
+
 def _carregar(args: argparse.Namespace):  # type: ignore[no-untyped-def]
-    """(tokenizer v2, modelo bf16 ja expandido para o vocabulario do v2)."""
+    """(tokenizer, modelo bf16 com o embedding no tamanho do tokenizer)."""
     import torch
     from train_qlora import caminho_do_tokenizer_json
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -110,13 +125,23 @@ def _carregar(args: argparse.Namespace):  # type: ignore[no-untyped-def]
     modelo = AutoModelForCausalLM.from_pretrained(
         args.model, torch_dtype=torch.bfloat16, device_map={"": 0}
     )
+    modelo.config.use_cache = False
+    if usa_caixa_marcada(tokenizer):
+        origem = AutoTokenizer.from_pretrained(args.model).get_vocab()
+        destino = tokenizer.get_vocab()
+        # origem igual ao destino: o modelo ja e v3 (retomada), nada a remapear
+        if origem != destino:
+            copiadas, iniciadas = remapear_modelo(modelo, origem, destino, MARCADORES)
+            print(
+                f"[cpt] v3: {copiadas} linhas copiadas por peca, {iniciadas} marcadores"
+            )
+        return tokenizer, modelo
     novas = expandir_modelo(
         modelo,
         caminho_do_tokenizer_json(args.model),
         Path(args.tokenizer) / "tokenizer.json",
     )
     print(f"[cpt] {novas} linhas novas de embedding iniciadas pela media das pecas")
-    modelo.config.use_cache = False
     return tokenizer, modelo
 
 
@@ -124,8 +149,10 @@ def treinar(args: argparse.Namespace) -> None:
     from transformers import Trainer, TrainingArguments, default_data_collator
 
     tokenizer, modelo = _carregar(args)
-    treino = montar_blocos(carregar_textos(Path(args.treino)), tokenizer, args.bloco)
-    val = montar_blocos(carregar_textos(Path(args.val)), tokenizer, args.bloco)
+    textos_treino = preparar_textos(carregar_textos(Path(args.treino)), tokenizer)
+    textos_val = preparar_textos(carregar_textos(Path(args.val)), tokenizer)
+    treino = montar_blocos(textos_treino, tokenizer, args.bloco)
+    val = montar_blocos(textos_val, tokenizer, args.bloco)
     val = val.select(indices_espacados(len(val), args.max_val_blocos))
     print(f"[cpt] {len(treino)} blocos de treino, {len(val)} de val ({args.bloco} tok)")
 

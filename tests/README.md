@@ -58,6 +58,22 @@ uv run --with-requirements requirements-dev.txt pytest tests/
 - `test_train_qlora.py` — `garantir_pad_distinto` com um `TokenizerFalso`:
   pad igual ao EOS (o caso do Qwen) vira um token de pad já existente, pad
   distinto fica como está, e sem candidato o erro cita o EOS.
+  Com o v3, `textos_de_treino` e `marca_de_resposta` codificam prompt,
+  resposta e o `### Resposta:` do mesmo jeito.
+- `test_caixa_marcada.py` — o lugar do marcador (antes do espaço, camelCase,
+  sigla), a ida e volta exata em casos difíceis (`İ`, `ß`, `ǅ`, `ª`, espaço
+  duplo) e em todo o dataset, a recusa de texto que já tem o marcador, o
+  marcador solto que o modelo pode gerar, e a detecção do v3 pelo vocab.
+- `test_build_tokenizer_v3.py` — `pecas_v3` fica com as originais e as nuas
+  minúsculas e recusa um v2 que mudou o prefixo; com os arquivos reais (pula
+  sem eles), os marcadores ficam no fim, nenhuma peça nova tem maiúscula, a
+  classe usa a mesma peça da instrução e o texto do dataset volta igual.
+- `test_remapear_vocab.py` — o mapa por peça, a recusa de peça que a origem
+  não tem, e o remapeamento de entrada e saída num `ModeloFalso` (o mesmo de
+  `test_expandir_vocab.py`, que agora também encolhe).
+- `test_colher_gigaverbo.py` — os shards espalhados, o filtro educativo e
+  não tóxico, a fonte no campo `licenca` e o teto de tokens, com parquet
+  falso em row groups de 2 linhas.
 - `test_restore_case.py` — o nome do módulo em `from`/`import` fica intacto,
   nomes de biblioteca são restaurados, strings e comentários não são tocados, e
   código que não tokeniza vira `ValueError`.
@@ -78,6 +94,7 @@ uv run --with-requirements requirements-dev.txt pytest tests/
   O `entidade_rate` tem regressão própria: `class Membro(Base)` no lugar de
   `Comentario` reprova, mesmo compilando e com a rota certa.
   `cortar_no_fim` corta a geração no primeiro EOS ou pad.
+  `prompts_para` e `desfazer_marcador` só mexem no texto com o v3.
 - `test_sandbox_gerado.py` — o `rodar_rotas` aceita o app completo **e** uma
   saída de uma operação só: o dataset gera uma operação por exemplo, então uma
   saída de `delete` não tem POST e tem de passar mesmo assim (a primeira versão
@@ -106,7 +123,8 @@ uv run --with-requirements requirements-dev.txt pytest tests/
 - `test_pretreino_continuado.py` — as partes puras do CPT: empacotamento em
   blocos iguais separados por EOS (sobra descartada) e a leitura do corpus
   com o número da linha quebrada no erro. E os índices espaçados da val,
-  que não pode medir só a primeira origem. O treino em si só roda na GPU.
+  que não pode medir só a primeira origem. `preparar_textos` só codifica a
+  maiúscula com o tokenizer v3. O treino em si só roda na GPU.
 - `test_ptbrificar_identificadores.py` — o teste que importa é a regressão de
   `FastAPI(description=x)`: o `kwarg` tem de sair `description=descricao`, nunca
   `descricao=descricao` (que o FastAPI ignoraria em silêncio). Também cobre

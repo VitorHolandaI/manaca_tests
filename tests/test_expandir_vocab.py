@@ -125,11 +125,13 @@ class ModeloFalso:
 
         assert not mean_resizing  # as linhas novas sao sobrescritas logo depois
         antiga = self.entrada.weight.data
+        # min: o v3 encolhe o vocabulario do v2 (remapear_vocab.py)
+        k = min(novo, antiga.shape[0])
         self.entrada = torch.nn.Embedding(novo, antiga.shape[1])
-        self.entrada.weight.data[: antiga.shape[0]] = antiga
+        self.entrada.weight.data[:k] = antiga[:k]
         antiga_saida = self.saida.weight.data
         self.saida = torch.nn.Linear(antiga.shape[1], novo, bias=False)
-        self.saida.weight.data[: antiga_saida.shape[0]] = antiga_saida
+        self.saida.weight.data[:k] = antiga_saida[:k]
 
 
 @precisa_dos_tokenizers

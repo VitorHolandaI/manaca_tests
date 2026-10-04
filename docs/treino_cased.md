@@ -1,10 +1,22 @@
 # Manacá-1B gerando FastAPI em português, com maiúscula
 
-Atualizado em 2026-10-03.
+Atualizado em 2026-10-04.
 
 ## Resultado
 
-Depois de um pré-treino continuado grande e de um ajuste fino com QLoRA, o Manacá-1B escreve uma API FastAPI + SQLAlchemy em português, com a caixa certa e sem nenhum script de conserto depois. Nos 32 pedidos de teste, sobre duas entidades que o modelo nunca viu no treino, todas as respostas compilam, sobem e passam nas requisições do teste. Num teste mais amplo, com 12 entidades inéditas, o melhor adapter do Manacá compila 88% e roda 87%, mas a classe sai com o nome certo em só 32% dos pedidos. O Qwen2.5-0.5B, treinado no mesmo dataset, acerta 100%. O nome da classe é o problema em aberto.
+Com a maiúscula representada por um marcador próprio no tokenizer (v3), o Manacá-1B escreve uma API FastAPI + SQLAlchemy em português com o nome certo da classe em 98% dos pedidos sobre entidades que nunca viu no treino. Todas as respostas compilam e 92% sobem e passam nas requisições do teste, sem nenhum script de conserto depois. Com a maiúscula dentro das peças (v2), o acerto do nome da classe era 32%. O teto de referência é o Qwen2.5-0.5B no mesmo dataset.
+
+| Teste amplo (182 pedidos, 12 entidades inéditas) | entidade_rate | compile_rate | runs_rate | docstring_rate | rotas | funcoes |
+| --- | --- | --- | --- | --- | --- | --- |
+| Manacá, tokenizer v2 + CPT grande + 2.000 nomes | 0,32 | 0,88 | 0,87 | 0,88 | 0,74 | 0,84 |
+| Manacá, tokenizer v3 (marcador) + CPT de 104M tokens | 0,98 | 1,0 | 0,92 | 1,0 | 0,99 | 0,93 |
+| Qwen2.5-0.5B, sem CPT | 1,0 | 1,0 | 1,0 | 1,0 | 0,945 | 1,0 |
+
+Os três usaram o mesmo teste, o mesmo dataset de SFT (7.932 exemplos, 3 épocas, QLoRA r=32) e a mesma avaliação (`--executar --sem-restauro`, geração greedy). O Manacá tinha 41,9 bilhões de tokens de pré-treino, todos em português e sem código, mais os nossos CPTs; o Qwen2.5 teve 18 trilhões. Cada linha é uma rodada só, sem repetição com outras sementes, e o teste cobre só pedidos no formato do molde, sobre CRUD em FastAPI. O Manacá v3 passa por um passo de decodificação exato entre a geração e a avaliação, que o Qwen não precisa.
+
+As falhas que restam no v3 estão concentradas numa entidade só, `agendamento`: o modelo escreve `AgendaResposta`, e `agenda` é uma das entidades do treino. O começo da palavra nova coincide com uma palavra conhecida, e ele completa com a conhecida em parte dos lugares.
+
+As rodadas anteriores foram medidas primeiro num teste com só duas entidades, que se mostrou otimista:
 
 | Rodada | Pós-processamento | case_rate | entidade_rate | rotas | compile_rate | runs_rate |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -154,7 +166,11 @@ O dataset e o eval estão certos: um modelo que já sabe caixa aprende a tarefa 
 
 Para rodar o Qwen, o `train_qlora.py` passou a trocar o pad quando ele é o próprio EOS (no Qwen os dois são `<|endoftext|>`, e o collator apagaria o EOS dos labels), e o eval passou a cortar a saída no primeiro EOS ou pad.
 
-O próximo passo, para manter o Manacá como base, é o tokenizer marcar a maiúscula com uma peça própria, como em [Land e Meister](https://arxiv.org/html/2608.08847): `Comentario` vira `<maiúscula>` seguido da mesma peça `comentario` da instrução. O marcador vai antes do espaço que precede a palavra, para que a peça continue sendo `▁comentario`. O CPT do marcador vai usar cerca de 100 milhões de tokens a mais de português do [GigaVerbo-v2](https://huggingface.co/datasets/Polygl0t/gigaverbo-v2), o corpus do projeto Tucano 2, filtrado por qualidade.
+Para manter o Manacá como base, o tokenizer v3 passou a marcar a maiúscula com uma peça própria, como em [Land e Meister](https://arxiv.org/html/2608.08847). `Comentario` vira `<|maj|>` seguido da mesma peça `comentario` da instrução, e `HTTPException` vira `<|mai|>http<|maj|>exception`. O marcador vai antes do espaço que precede a palavra, para que a peça continue sendo `▁comentario`. A conversão é exata nos dois sentidos e roda fora do modelo: o texto é codificado antes de tokenizar e decodificado depois de gerar (`scripts/caixa_marcada.py`).
+
+O v3 tem as 64.000 peças originais do Manacá (que baixam a caixa), as 43.120 peças sem espaço do v2 e os 2 marcadores, 107.122 tokens no total. O CPT partiu do CPT grande, com as linhas do embedding copiadas peça por peça, e os marcadores começaram pela média das letras maiúsculas do v2. O corpus juntou o código e a Wikipédia de antes com 65 milhões de tokens do [GigaVerbo-v2](https://huggingface.co/datasets/Polygl0t/gigaverbo-v2), o corpus do projeto Tucano 2, filtrado por nota educativa e toxicidade: 104 milhões de tokens, 6.352 passos, cerca de 8 h 45 na RTX 3090. O SFT foi o mesmo das rodadas anteriores (7.932 exemplos, 3 épocas, 2 h 21).
+
+Com o marcador, a maiúscula deixa de ser uma ortografia separada para cada palavra e vira uma decisão só, que vale para todas. O modelo aprende quando pôr `<|maj|>` com cada palavra maiúscula do corpus e aplica isso a palavras que nunca viu, copiando a peça minúscula da instrução. O resultado está na tabela do começo do documento.
 
 ## Problemas encontrados no caminho
 

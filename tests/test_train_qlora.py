@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 import pytest
-from train_qlora import garantir_pad_distinto
+from caixa_marcada import MAI, MAJ
+from train_qlora import (
+    RESPOSTA_MARCA,
+    garantir_pad_distinto,
+    marca_de_resposta,
+    textos_de_treino,
+)
 
 
 class TokenizerFalso:
@@ -42,3 +48,28 @@ def test_sem_token_de_pad_disponivel_falha_com_o_eos() -> None:
     tok = TokenizerFalso({"</s>": 2}, eos="</s>", pad=None)
     with pytest.raises(ValueError, match="</s>"):
         garantir_pad_distinto(tok)
+
+
+class TokenizerV3Falso:
+    eos_token = "</s>"
+
+    def __init__(self, marcado: bool) -> None:
+        self.vocab = {"a": 0, MAJ: 1, MAI: 2} if marcado else {"a": 0}
+
+    def get_vocab(self) -> dict[str, int]:
+        return self.vocab
+
+
+def test_textos_de_treino_codificam_prompt_e_resposta_no_v3() -> None:
+    linhas = [{"instruction": "Crie a rota", "output": "class Item(Base):"}]
+    texto = textos_de_treino(linhas, TokenizerV3Falso(marcado=True))[0]  # type: ignore[arg-type]
+    assert f"{MAJ}crie a rota" in texto
+    assert f"class{MAJ} item({MAJ}base):</s>" in texto
+    assert marca_de_resposta(TokenizerV3Falso(marcado=True)) in texto  # type: ignore[arg-type]
+
+
+def test_sem_marcador_o_texto_e_o_de_sempre() -> None:
+    linhas = [{"instruction": "Crie a rota", "output": "class Item(Base):"}]
+    texto = textos_de_treino(linhas, TokenizerV3Falso(marcado=False))[0]  # type: ignore[arg-type]
+    assert "class Item(Base):</s>" in texto
+    assert marca_de_resposta(TokenizerV3Falso(marcado=False)) == RESPOSTA_MARCA  # type: ignore[arg-type]
