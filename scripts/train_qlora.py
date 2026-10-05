@@ -166,15 +166,16 @@ class TokenizerDeTreino(Protocol):
 def textos_de_treino(
     linhas: list[dict[str, str]], tokenizer: TokenizerDeTreino
 ) -> list[str]:
-    """Prompt + resposta + eos; com o tokenizer v3, a maiuscula vira marcador.
+    """Prompt + resposta + eos; com o tokenizer v3/v4, a caixa vira marcador.
 
     Exemplo: textos_de_treino([{"instruction": "x", "output": "y"}], tok)
     """
     eos = tokenizer.eos_token or ""
-    textos = [montar_texto(r["instruction"], r["output"], eos) for r in linhas]
+    textos = [montar_texto(r["instruction"], r["output"], "") for r in linhas]
     if usa_caixa_marcada(tokenizer):
-        return [codificar_para(tokenizer, t) for t in textos]
-    return textos
+        # o eos entra cru: codificado, `</s>` virava `</<|cola|> s>` no v4
+        textos = [codificar_para(tokenizer, t) for t in textos]
+    return [t + eos for t in textos]
 
 
 def marca_de_resposta(tokenizer: TokenizerDeTreino) -> str:

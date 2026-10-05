@@ -60,6 +60,7 @@ uv run --with-requirements requirements-dev.txt pytest tests/
   distinto fica como está, e sem candidato o erro cita o EOS.
   Com o v3, `textos_de_treino` e `marca_de_resposta` codificam prompt,
   resposta e o `### Resposta:` do mesmo jeito.
+  Regressão do v4: o `</s>` fica cru no fim, sem `<|cola|>` no meio.
 - `test_caixa_marcada.py` — o lugar do marcador (antes do espaço, camelCase,
   sigla), a ida e volta exata em casos difíceis (`İ`, `ß`, `ǅ`, `ª`, espaço
   duplo) e em todo o dataset, a recusa de texto que já tem o marcador, o

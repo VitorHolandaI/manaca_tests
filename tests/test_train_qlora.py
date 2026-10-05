@@ -73,3 +73,18 @@ def test_sem_marcador_o_texto_e_o_de_sempre() -> None:
     texto = textos_de_treino(linhas, TokenizerV3Falso(marcado=False))[0]  # type: ignore[arg-type]
     assert "class Item(Base):</s>" in texto
     assert marca_de_resposta(TokenizerV3Falso(marcado=False)) == RESPOSTA_MARCA  # type: ignore[arg-type]
+
+
+class TokenizerV4Falso(TokenizerV3Falso):
+    def __init__(self) -> None:
+        from caixa_marcada import COLA
+
+        self.vocab = {"a": 0, MAJ: 1, MAI: 2, COLA: 3}
+
+
+def test_eos_fica_cru_no_fim_com_a_fronteira() -> None:
+    # regressao: no v4 o `</s>` virava `</<|cola|> s>`, o EOS sumia do treino
+    # e o modelo nao parava de gerar (compile_rate 0,0 em 2026-10-04)
+    linhas = [{"instruction": "Crie a rota", "output": "x = 1}"}]
+    texto = textos_de_treino(linhas, TokenizerV4Falso())[0]  # type: ignore[arg-type]
+    assert texto.endswith("}</s>")
