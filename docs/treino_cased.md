@@ -1,20 +1,21 @@
 # Manacá-1B gerando FastAPI em português, com maiúscula
 
-Atualizado em 2026-10-04.
+Atualizado em 2026-10-06.
 
 ## Resultado
 
-Com a maiúscula representada por um marcador próprio no tokenizer (v3), o Manacá-1B escreve uma API FastAPI + SQLAlchemy em português com o nome certo da classe em 98% dos pedidos sobre entidades que nunca viu no treino. Todas as respostas compilam e 92% sobem e passam nas requisições do teste, sem nenhum script de conserto depois. Com a maiúscula dentro das peças (v2), o acerto do nome da classe era 32%. O teto de referência é o Qwen2.5-0.5B no mesmo dataset.
+Com a maiúscula e o espaço antes da palavra representados por marcadores próprios no tokenizer (v4), o Manacá-1B escreve uma API FastAPI + SQLAlchemy em português que compila, sobe e passa nas requisições do teste em todos os 182 pedidos sobre 12 entidades que nunca viu no treino, com o nome certo da classe em todos, sem nenhum script de conserto depois. Com a maiúscula dentro das peças (v2), o acerto do nome da classe era 32%.
 
-| Teste amplo (182 pedidos, 12 entidades inéditas) | entidade_rate | compile_rate | runs_rate | docstring_rate | rotas | funcoes |
-| --- | --- | --- | --- | --- | --- | --- |
-| Manacá, tokenizer v2 + CPT grande + 2.000 nomes | 0,32 | 0,88 | 0,87 | 0,88 | 0,74 | 0,84 |
-| Manacá, tokenizer v3 (marcador) + CPT de 104M tokens | 0,98 | 1,0 | 0,92 | 1,0 | 0,99 | 0,93 |
-| Qwen2.5-0.5B, sem CPT | 1,0 | 1,0 | 1,0 | 1,0 | 0,945 | 1,0 |
+| Teste amplo (182 pedidos, 12 entidades inéditas) | eval | entidade_rate | compile_rate | runs_rate | docstring_rate | rotas | funcoes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Manacá, tokenizer v2 + CPT grande + 2.000 nomes | bf16 | 0,32 | 0,88 | 0,87 | 0,88 | 0,74 | 0,84 |
+| Manacá, tokenizer v3 (caixa) + CPT de 104M tokens | 4 bits | 0,98 | 1,0 | 0,93 | 1,0 | 1,0 | 0,94 |
+| Manacá, tokenizer v4 (caixa + fronteira) + mais 110M tokens | 4 bits | 1,0 | 1,0 | 1,0 | 1,0 | 1,0 | 1,0 |
+| Qwen2.5-0.5B, sem CPT | bf16 | 1,0 | 1,0 | 1,0 | 1,0 | 0,945 | 1,0 |
 
-Os três usaram o mesmo teste, o mesmo dataset de SFT (7.932 exemplos, 3 épocas, QLoRA r=32) e a mesma avaliação (`--executar --sem-restauro`, geração greedy). O Manacá tinha 41,9 bilhões de tokens de pré-treino, todos em português e sem código, mais os nossos CPTs; o Qwen2.5 teve 18 trilhões. Cada linha é uma rodada só, sem repetição com outras sementes, e o teste cobre só pedidos no formato do molde, sobre CRUD em FastAPI. O Manacá v3 passa por um passo de decodificação exato entre a geração e a avaliação, que o Qwen não precisa.
+Todos usaram o mesmo teste, o mesmo dataset de SFT (7.932 exemplos, 3 épocas, QLoRA r=32) e a mesma avaliação (`--executar --sem-restauro`, geração greedy). Os adapters do Manacá v3 e v4 foram avaliados sobre o modelo base quantizado em 4 bits, igual ao treino (`--base-4bit`); a seção do v4 explica por quê. O Manacá tinha 41,9 bilhões de tokens de pré-treino, todos em português e sem código, mais os nossos CPTs; o Qwen2.5 teve 18 trilhões. Cada linha é uma rodada só, sem repetição com outras sementes, e o teste cobre só pedidos no formato do molde, sobre CRUD em FastAPI. O Manacá v3 e v4 passam por um passo de decodificação exato entre a geração e a avaliação, que o Qwen não precisa.
 
-As falhas que restam no v3 estão concentradas numa entidade só, `agendamento`: o modelo escreve `AgendaResposta`, e `agenda` é uma das entidades do treino. O começo da palavra nova coincide com uma palavra conhecida, e ele completa com a conhecida em parte dos lugares.
+No v3, todas as falhas eram de uma entidade só, `agendamento`: o modelo escrevia `AgendaResposta` e `criar_agenda`, e `agenda` é uma das entidades do treino. O v4 resolveu isso.
 
 As rodadas anteriores foram medidas primeiro num teste com só duas entidades, que se mostrou otimista:
 
@@ -170,7 +171,11 @@ Para manter o Manacá como base, o tokenizer v3 passou a marcar a maiúscula com
 
 O v3 tem as 64.000 peças originais do Manacá (que baixam a caixa), as 43.120 peças sem espaço do v2 e os 2 marcadores, 107.122 tokens no total. O CPT partiu do CPT grande, com as linhas do embedding copiadas peça por peça, e os marcadores começaram pela média das letras maiúsculas do v2. O corpus juntou o código e a Wikipédia de antes com 65 milhões de tokens do [GigaVerbo-v2](https://huggingface.co/datasets/Polygl0t/gigaverbo-v2), o corpus do projeto Tucano 2, filtrado por nota educativa e toxicidade: 104 milhões de tokens, 6.352 passos, cerca de 8 h 45 na RTX 3090. O SFT foi o mesmo das rodadas anteriores (7.932 exemplos, 3 épocas, 2 h 21).
 
-Com o marcador, a maiúscula deixa de ser uma ortografia separada para cada palavra e vira uma decisão só, que vale para todas. O modelo aprende quando pôr `<|maj|>` com cada palavra maiúscula do corpus e aplica isso a palavras que nunca viu, copiando a peça minúscula da instrução. O resultado está na tabela do começo do documento.
+Com o marcador, a maiúscula deixa de ser uma ortografia separada para cada palavra e vira uma decisão só, que vale para todas. O modelo aprende quando pôr `<|maj|>` com cada palavra maiúscula do corpus e aplica isso a palavras que nunca viu, copiando a peça minúscula da instrução.
+
+O que sobrou no v3 era o mesmo problema em outra forma. `agendamento` depois de espaço é a peça `▁agendamento`, mas colado em `criar_` era a peça `agendamento` sem `▁`, com outro id, e nesse lugar perdia para `agenda`, que o SFT escreveu centenas de vezes. O artigo de Land e Meister conta seis formas possíveis de uma palavra: três de caixa vezes duas de espaço antes. O v3 tirou a caixa; o v4 tirou o espaço com um terceiro marcador, `<|cola|>`, que diz que a palavra não tinha espaço antes. Toda palavra passa a ser a forma com espaço, e `criar_agendamento` vira `criar_<|cola|> agendamento`, com a mesma peça da instrução. Com as duas fontes viradas marcador, o v4 voltou a ser o tokenizer original do Manacá mais 3 tokens (64.003); as peças sem espaço do v2 deixaram de ser precisas. O texto codificado fica 6% maior no corpus e 15% maior no código do dataset.
+
+O CPT do v4 partiu do CPT do v3, com as peças copiadas pelo texto e só o `<|cola|>` novo: 53.928 blocos (cerca de 110 milhões de tokens), 6.741 passos, cerca de 9 h; a val loss foi de 3,14 para 2,08. O SFT e a avaliação do v4 tiveram dois bugs, descritos na tabela abaixo: o EOS sumia do texto de treino, e a avaliação em bf16 de um adapter treinado sobre o base em 4 bits trocava `connect_args={` por `connect_args=Depends` em todos os pedidos.
 
 ## Problemas encontrados no caminho
 
@@ -179,6 +184,8 @@ Com o marcador, a maiúscula deixa de ser uma ortografia separada para cada pala
 | Conjunto de teste vazio | o filtro procurava `class comentario` em minúsculas | usa o mesmo `nome_de_classe` do gerador, com teste de regressão |
 | Resposta 422 contada como sucesso na sandbox | o filtro de schema de entrada não reconhecia `UsuarioCriar` com maiúscula | comparação sem diferenciar caixa |
 | Erro ao expandir o embedding | matriz com 64.128 linhas, não 64.000 | aceita o preenchimento, recusa só matriz menor |
+| v4: o modelo não parava de gerar, compile_rate 0,0 | o texto de treino era codificado junto com o EOS, e `</s>` virava `</<|cola|> s>`, sem o token de fim | o EOS é colado cru depois da codificação, com teste de regressão |
+| v4: runs_rate 0,0 com tudo compilando | o adapter foi treinado sobre o base em 4 bits e avaliado sobre o base em bf16; depois de `=`, o `{` é o byte cru `<0x7B>` e o `<|cola|>` é o token mais comum, e a diferença numérica virou essa escolha | `eval_code.py --base-4bit`, que carrega o base como o treino |
 | JSON quebrado na linha 3.131 do corpus | `str.splitlines()` também quebra em `\u2028` e `\x85`, que o `json.dumps(ensure_ascii=False)` deixa crus dentro do texto | os leitores de JSONL usam `split("\n")`, com teste de regressão |
 
 ## Ambiente

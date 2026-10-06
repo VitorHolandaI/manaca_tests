@@ -290,19 +290,35 @@ def _base_do_adapter(model_id: str) -> str:
     return json.loads(config.read_text(encoding="utf-8"))["base_model_name_or_path"]
 
 
-def _carregar_para_geracao(model_id: str, device: str):
-    """Tokenizer + modelo no device; aplica o adapter PEFT se model_id for um."""
+def _carregar_para_geracao(model_id: str, device: str, base_4bit: bool = False):
+    """Tokenizer + modelo no device; aplica o adapter PEFT se model_id for um.
+
+    base_4bit carrega o base em NF4 como o train_qlora treinou: no v4 o bf16
+    trocou `connect_args={` por `connect_args=Depends` (runs 0,0, 2026-10-06).
+    """
     import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
     tok = AutoTokenizer.from_pretrained(model_id)
     base = _base_do_adapter(model_id)
-    modelo = AutoModelForCausalLM.from_pretrained(base, torch_dtype=torch.bfloat16)
+    if base_4bit:
+        quant = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+        )
+        modelo = AutoModelForCausalLM.from_pretrained(
+            base, quantization_config=quant, device_map={"": 0}
+        )
+    else:
+        modelo = AutoModelForCausalLM.from_pretrained(base, torch_dtype=torch.bfloat16)
     if base != model_id:
         from peft import PeftModel
 
         modelo = PeftModel.from_pretrained(modelo, model_id)
-    return tok, modelo.to(device).eval()
+    # modelo em 4 bits ja nasce no device do device_map e nao aceita .to()
+    return tok, (modelo if base_4bit else modelo.to(device)).eval()
 
 
 def _prompt(instruction: str) -> str:
@@ -382,6 +398,7 @@ def gerar_com_modelo(
     limite: int | None,
     max_novos: int,
     lote: int,
+    base_4bit: bool = False,
 ) -> dict[str, str]:
     import torch
 
@@ -390,7 +407,7 @@ def gerar_com_modelo(
         if torch.xpu.is_available()
         else ("cuda" if torch.cuda.is_available() else "cpu")
     )
-    tok, modelo = _carregar_para_geracao(model_id, device)
+    tok, modelo = _carregar_para_geracao(model_id, device, base_4bit)
     itens = ref[:limite] if limite else ref
     prompts = prompts_para(itens, tok)
     textos = desfazer_marcador(
@@ -421,6 +438,11 @@ def main() -> int:
         help="sobe cada saida como app FastAPI e roda o CRUD (precisa de fastapi)",
     )
     ap.add_argument(
+        "--base-4bit",
+        action="store_true",
+        help="carrega o base em NF4, como o train_qlora treinou o adapter",
+    )
+    ap.add_argument(
         "--reparar",
         action="store_true",
         help="repara identificador inexistente e acento antes de pontuar",
@@ -440,7 +462,7 @@ def main() -> int:
         }
     elif args.model:
         pred = gerar_com_modelo(
-            args.model, ref, args.limit, args.max_new_tokens, args.lote
+            args.model, ref, args.limit, args.max_new_tokens, args.lote, args.base_4bit
         )
     else:
         raise SystemExit("informe --pred ou --model")
