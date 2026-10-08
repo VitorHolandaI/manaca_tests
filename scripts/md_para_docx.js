@@ -1,6 +1,7 @@
 // Gera docs/treino_cased.docx a partir do .md: titulo, secoes, paragrafos,
-// listas, tabelas, `codigo` e [links]. So o subconjunto que o doc usa.
-// Uso: npm install docx && node scripts/md_para_docx.js entrada.md saida.docx
+// listas, tabelas, blocos e `codigo`, [links]. So o subconjunto que o doc usa.
+// Uso: npm install --prefix /tmp/md docx
+//      NODE_PATH=/tmp/md/node_modules node scripts/md_para_docx.js entrada.md saida.docx
 const fs = require("fs");
 const d = require("docx");
 
@@ -55,9 +56,18 @@ function tabela(bloco) {
 }
 
 const corpo = [];
+let emCodigo = false;
 for (let i = 0; i < linhas.length; i++) {
   const l = linhas[i];
-  if (!l.trim()) continue;
+  if (l.startsWith("```")) {
+    emCodigo = !emCodigo;
+    continue;
+  }
+  if (emCodigo) {
+    corpo.push(new d.Paragraph({ children: [new d.TextRun({ text: l, font: "Consolas", size: 18 })] }));
+    continue;
+  }
+  if (!l.trim() || l.startsWith("<!--")) continue;
   if (l.startsWith("# ")) corpo.push(new d.Paragraph({ heading: d.HeadingLevel.TITLE, children: runs(l.slice(2)) }));
   else if (l.startsWith("## ")) corpo.push(new d.Paragraph({ heading: d.HeadingLevel.HEADING_1, children: runs(l.slice(3)) }));
   else if (l.startsWith("- ")) corpo.push(new d.Paragraph({ numbering: { reference: "bol", level: 0 }, children: runs(l.slice(2)) }));

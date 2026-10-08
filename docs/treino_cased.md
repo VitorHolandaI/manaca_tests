@@ -192,6 +192,54 @@ O CPT do v4 partiu do CPT do v3, com as peças copiadas pelo texto e só o `<|co
 
 RTX 3090 de 24 GB, Python 3.12, torch 2.5.1 (CUDA 12.4), transformers 4.46.3, trl 0.12.2, peft 0.13.2, datasets 3.1.0. O pipeline inteiro roda com `scripts/rodar_cpt_grande_3090.sh`, em seis etapas: colher código, colher Wikipedia, montar o corpus, CPT, SFT e avaliação. Cada etapa grava o log em `logs/`.
 
+## Rodar o modelo fora da 3090
+
+O modelo final são duas peças: `checkpoints/manaca-cpt-v4` (o modelo depois do CPT, 1,72 bilhão de parâmetros em bf16, 3,4 GB) e `checkpoints/manaca-fastapi-v4` (o adapter LoRA do SFT, 134 MB). As duas ficam fora do git.
+
+O adapter foi treinado sobre o base quantizado em NF4 (QLoRA) e só acerta sobre esse base. Sem GPU NVIDIA não há bitsandbytes, então `scripts/nf4_simulado.py` arredonda os pesos para a grade NF4 em torch puro (os 16 valores e o bloco de 64 do bitsandbytes), e o adapter vê os pesos do treino. `scripts/chat_fastapi.py` usa isso em CPU, mas leva mais de 10 minutos por resposta.
+
+Para usar a GPU Intel desta máquina, o adapter é fundido no base já arredondado (`scripts/fundir_adapter.py`) e convertido para GGUF pelo `convert_hf_to_gguf.py` do llama.cpp. O tokenizer do GGUF não serve: o Manacá é Unigram com byte fallback, e o llama.cpp não tem essa combinação. No modo Unigram (`t5`), `\n` vira `<unk>`; no modo SentencePiece (`llama`), a segmentação sai por fusões. Em 100 textos, 6 saíram idênticos ao tokenizer do treino em cada modo. Por isso `scripts/chat_gguf.py` tokeniza do lado do Python e conversa com o `llama-server` por ids (o `/completion` aceita o prompt como lista de ids e devolve os ids gerados). Pelo mesmo motivo o Ollama não serve: ele só aceita texto.
+
+```
+llama-server -m models/manaca-fastapi-v4-q8_0.gguf --port 8080 -ngl 99 -c 4096
+uv run --with transformers==4.46.3 python scripts/chat_gguf.py
+```
+
+Quantizado pelo `llama-quantize`, sobre o GGUF F16 fundido, na GPU Intel Arc desta máquina:
+
+| Arquivo | Tamanho | Velocidade | Resultado medido |
+| --- | --- | --- | --- |
+| F16 | 3,4 GB | ~10 tokens/s | referência; app do pedido de teste sobe na sandbox |
+| Q8_0 | 1,8 GB | ~15 tokens/s | 10 de 10 pedidos do teste amplo (5 entidades) compilam, sobem e acertam a classe; saída idêntica à do F16 no pedido de teste |
+| Q6_K | 1,4 GB | n/d | não medido |
+| Q5_K_M | 1,2 GB | n/d | não medido |
+| Q4_K_M | 1,1 GB | n/d | quebrou: no pedido de teste saiu um arquivo sem nenhuma rota |
+
+O Q8_0 é o menor arquivo com resultado medido igual ao F16. O Q4_K_M confirma que o modelo é sensível a arredondamento, como já tinha mostrado a diferença entre NF4 e bf16. Os níveis intermediários ficaram sem medir porque a bateria (`scripts/eval_gguf.py`, 2 pedidos por entidade) parou no meio do Q8_0.
+
+O modelo responde a qualquer pedido com um arquivo FastAPI, inclusive a "oi" (sai `class Oi(Base)`). O SFT só teve pedidos de FastAPI, e o ponto de partida é o Manacá base, que não conversa.
+
+## Próximo passo: versão que conversa
+
+Para o modelo conversar e só gerar FastAPI quando pedirem, o SFT precisa misturar instruções gerais com os pedidos de FastAPI. A receita do Manacá-1B-Instruct está no [repositório do LNCC](https://github.com/Instituto-IA-LNCC/manaca-1b-instruct) (`sft/prepare_data.py`, `sft/jaster/build_jaster.py`, `docs/data/`):
+
+| Fonte | Dataset no Hugging Face | Conversão |
+| --- | --- | --- |
+| Alpaca-PT | `dominguesm/alpaca-data-pt-br` | instruction, input, output como estão |
+| Aya (pt) | `CohereForAI/aya_dataset` | `inputs` vira instrução, `targets` vira resposta, só idioma português |
+| OASST1 (pt) | `OpenAssistant/oasst1` | pares prompter e assistant com rank 0, só português |
+| Tradução | `Helsinki-NLP/opus-100`, en-pt, 20.000 primeiros | duas instruções por par (para inglês e para português) |
+| Resumo | `csebuetnlp/xlsum`, português, 10.000 primeiros | texto no input, resumo na resposta |
+| JASTER | ASSIN2, SICK-BR, FaQuAD, ENEM, HAREM, LeNER-Br, TweetSentBR, HateBR, Pirá, Mac-Morpho | tarefas de PLN em formato de instrução |
+
+A versão v2 do LNCC tem 141.404 exemplos, com deduplicação e corte de tamanho. O template deles tem preâmbulo próprio quando há `input` e o marcador `### Entrada:`, e o `train_qlora.py` deste projeto ainda ignora o campo `input`. O que falta fazer:
+
+- [ ] Rodar o `sft/prepare_data.py` do LNCC (fontes da v2) ou reproduzir os filtros dele, e gravar o resultado no formato Alpaca.
+- [ ] Ensinar o `montar_texto` do `train_qlora.py` a usar `input`, com o preâmbulo e o `### Entrada:` do LNCC, e com a mesma codificação de caixa e fronteira.
+- [ ] Escolher a proporção. Os 141 mil exemplos inteiros levariam dezenas de horas na 3090 (os 7.932 de FastAPI levam 2 h 30 em 3 épocas); uma amostra de 10 a 20 mil por fonte, mais os 7.932 de FastAPI, cabe em 5 a 8 horas.
+- [ ] SFT a partir do `manaca-cpt-v4`, eval no teste amplo com `--base-4bit` (tem de continuar em 1,0) e um conjunto de pedidos de conversa que não pode gerar código.
+- [ ] Licença: Alpaca-PT é CC BY-NC e XLSum é CC BY-NC-SA, por isso o instruct do LNCC é CC BY-NC 4.0. Usando a mesma receita, o modelo daqui herda essa restrição; o Instruct-Aira v3 (Apache 2.0, 50 mil conversas em português) é a alternativa sem restrição.
+
 ## Licenças
 
 O dataset de ajuste fino é CC0. O código do FastAPI e o código colhido do GitHub têm licenças permissivas, registradas por documento no corpus. A Wikipedia é CC BY-SA 3.0, que exige atribuição e compartilhamento pela mesma licença. Isso precisa ser resolvido antes de distribuir pesos treinados com ela. O modelo base é CC BY 4.0 e exige atribuição ao LNCC.

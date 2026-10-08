@@ -128,6 +128,20 @@ uv run --with-requirements requirements-dev.txt pytest tests/
   mesma guarda e a val por origem aos documentos colhidos.
 - `test_colher_codigo_ptbr.py` — o detector de português quebra camelCase e snake_case, não conta palavra que colide com inglês, e o filtro exige Python + licença permissiva + português + tamanho são. O filtro de shard roda sobre um parquet falso em `tmp_path` (atrás de `pyarrow`).
 - `test_colher_wikipedia_ptbr.py` — pula esboço, marca a licença CC BY-SA e para no orçamento de caracteres, sobre um parquet falso (atrás de `pyarrow`).
+- `test_eval_gguf.py` — a amostra pega os primeiros pedidos de cada entidade
+  na ordem do arquivo.
+- `test_fundir_adapter.py` — num Llama minúsculo criado no teste, o modelo
+  fundido dá os mesmos logits que o adapter sobre o base em NF4 simulado, e
+  a pasta de saída não tem mais `adapter_config.json`. Pula sem torch,
+  transformers e peft.
+- `test_chat_gguf.py` — o corpo do `/completion` manda ids, greedy, sem
+  cache e pedindo os ids de volta; com um `ClienteFalso` no lugar do
+  servidor, `responder` codifica o pedido (com BOS e marcadores) e devolve o
+  código com a caixa, cortando no EOS.
+  Com outro template (`--oficial`), o prompt enviado é o desse template.
+- `test_nf4_simulado.py` — o arredondamento leva cada bloco de 64 aos 16
+  valores do NF4, é idempotente, aceita tamanho fora do bloco, e o
+  `simular_nf4` pula o `lm_head`. Pula sem torch.
 - `test_pretreino_continuado.py` — as partes puras do CPT: empacotamento em
   blocos iguais separados por EOS (sobra descartada) e a leitura do corpus
   com o número da linha quebrada no erro. E os índices espaçados da val,
