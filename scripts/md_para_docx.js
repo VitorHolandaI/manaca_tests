@@ -37,7 +37,8 @@ function runs(texto, extra = {}) {
 function tabela(bloco) {
   const celulas = bloco
     .filter((_, i) => i !== 1)
-    .map((l) => l.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim()));
+    // `\|` e pipe dentro da celula (ex.: `<\|maj\|>`), nao separador
+    .map((l) => l.trim().replace(/^\||\|$/g, "").split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|")));
   const n = celulas[0].length;
   const larg = Math.floor(LARGURA / n);
   const borda = { style: d.BorderStyle.SINGLE, size: 4, color: "BBBBBB" };

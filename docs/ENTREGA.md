@@ -8,6 +8,29 @@ Um ajuste do [Manacá-1B](https://huggingface.co/AIInstituteLNCC/manaca-1b-base)
 
 O modelo roda nesta máquina, na GPU Intel, a cerca de 15 tokens por segundo: um arquivo FastAPI completo sai em uns 45 segundos.
 
+## Ficha técnica
+
+| Item | Valor |
+| --- | --- |
+| Base | [AIInstituteLNCC/manaca-1b-base](https://huggingface.co/AIInstituteLNCC/manaca-1b-base), 41,9 bilhões de tokens de pré-treino em português |
+| Arquitetura | `LlamaForCausalLM`, 1,72 bilhão de parâmetros |
+| Camadas | 24, dimensão 2048, MLP 8192 |
+| Atenção | 32 cabeças, 8 de chave e valor (GQA), RoPE com theta 500.000 |
+| Contexto máximo da arquitetura | 4.096 tokens (`max_position_embeddings`), prompt e resposta somados |
+| Contexto usado no treino | 2.048 tokens (blocos do CPT e `--max-seq` do SFT); acima disso, não medido |
+| Tamanho típico de uma resposta FastAPI | cerca de 790 tokens no formato com marcadores |
+| Tokenizer | v4: o Unigram original do Manacá (64.000 peças, minúsculas) mais `<\|maj\|>`, `<\|mai\|>` e `<\|cola\|>`, total 64.003 |
+| Pré e pós-processamento | obrigatórios: `scripts/caixa_marcada.py` codifica a entrada e decodifica a saída (maiúscula e espaço viram marcadores) |
+| Template | Alpaca-PT do LNCC (`### Instrução:`, `### Entrada:`, `### Resposta:`), gravado no adapter como `template.json` = `lncc` |
+| Tokens especiais | `<s>` = 1 (BOS), `</s>` = 2 (EOS), `<pad>` = 3 |
+| Pré-treino continuado | cerca de 250 milhões de tokens em três etapas, pesos completos em bf16 |
+| SFT | QLoRA 4 bits (NF4, dupla quantização), LoRA r=32 nas 7 projeções de atenção e MLP, 3 épocas, 20.747 exemplos |
+| Formatos | adapter LoRA (safetensors, 134 MB) sobre o modelo do CPT (3,3 GB, bf16); GGUF F16 (3,4 GB) e Q8_0 (1,8 GB) |
+| Precisão que o adapter exige | base em NF4 (o treino); em bf16 o resultado cai; o GGUF é fundido sobre o NF4 simulado |
+| Velocidade medida | cerca de 15 tokens por segundo (Q8_0, GPU Intel Arc, llama.cpp SYCL); cerca de 45 s por arquivo FastAPI |
+| Geração usada nos testes | greedy (temperatura 0) |
+| Licença | não comercial (herdada do Alpaca-PT e do XLSum, como o Manacá-1B-Instruct) |
+
 ## Resultado
 
 Teste amplo: 182 pedidos de FastAPI sobre 12 entidades fora do treino, avaliados por `scripts/eval_code.py` (compila, sobe na sandbox e roda o CRUD, nome certo da classe).
@@ -55,6 +78,68 @@ uv run --with fastapi --with sqlalchemy --with uvicorn uvicorn app_livros:app
 e abra http://127.0.0.1:8000/docs para testar as rotas pelo navegador.
 
 `scripts/rodar_chat_local.sh v4` usa a versão que só faz FastAPI. Se a porta 8080 já estiver ocupada, `PORTA=8081 scripts/rodar_chat_local.sh`.
+
+## Benchmark e comparação com outros modelos
+
+O benchmark mede duas coisas, com o mesmo código para qualquer modelo:
+
+- **FastAPI:** 182 pedidos sobre 12 entidades que nunca aparecem no treino (`data/fastapi_ptbr_teste_amplo.jsonl`). Para cada resposta, `scripts/eval_code.py` confere se compila, sobe o app numa sandbox e roda o CRUD, e confere o nome da classe do model SQLAlchemy.
+- **Conversa:** 18 pedidos gerais (`scripts/eval_conversa.py`). Conta quantas respostas saem em texto, e não como um arquivo FastAPI, e guarda as respostas para leitura.
+
+Todo modelo passa pelo mesmo SFT (QLoRA 4 bits, LoRA r=32, 3 épocas, os mesmos dados), e a geração é greedy, sobre o modelo base em 4 bits, como no treino.
+
+### O benchmark com o Qwen
+
+O controle foi o [Qwen2.5-0.5B](https://huggingface.co/Qwen/Qwen2.5-0.5B) base, com metade do tamanho do Manacá, treinado só com os 7.932 pedidos de FastAPI no template antigo. Levou 54 minutos de SFT na RTX 3090. Para reproduzir:
+
+```
+MODO=fastapi scripts/comparar_modelo_3090.sh Qwen/Qwen2.5-0.5B qwen05-fastapi
+```
+
+| Modelo | Nome da classe | Compila | App sobe e responde | Conversa |
+| --- | --- | --- | --- | --- |
+| Qwen2.5-0.5B, só FastAPI | 100% | 100% | 100% | não medida |
+| Manacá v4, só FastAPI | 100% | 100% | 100% | "oi" vira código |
+| Manacá v4 instruct (entregue) | 97,8% | 100% | 100% | 18 de 18 em texto |
+
+Ele serviu para separar o problema: um modelo que já sabe maiúscula aprende a tarefa só com o SFT, então o limite estava no pré-treino do Manacá, e não nos dados nem na avaliação.
+
+### Rodar com outro modelo
+
+Na RTX 3090, com o projeto sincronizado (`scripts/sync_3090.sh`):
+
+```
+scripts/comparar_modelo_3090.sh <id no Hugging Face> <nome curto>
+```
+
+Exemplos:
+
+```
+scripts/comparar_modelo_3090.sh Qwen/Qwen2.5-0.5B qwen05
+scripts/comparar_modelo_3090.sh Qwen/Qwen2.5-1.5B qwen15
+scripts/comparar_modelo_3090.sh TucanoBR/Tucano-2b4-instruct tucano
+```
+
+O padrão (`MODO=instruct`) treina como o modelo entregue: FastAPI junto com o mix de instrução do LNCC, no template `lncc`. `MODO=fastapi` treina só com FastAPI, como no benchmark do Qwen acima. `EPOCAS=` muda o número de épocas.
+
+O script faz um smoke de 2 passos, o SFT, os dois evals, e imprime no fim uma linha pronta para a tabela:
+
+```
+| qwen05 | 1.0 | 1.0 | 1.0 | 18 de 18 |
+```
+
+Os detalhes ficam em `results/comparar_<nome>.json` (todas as métricas e as 10 primeiras falhas), `results/comparar_<nome>_pred.jsonl` (os 182 arquivos gerados) e `results/comparar_<nome>_conversa.jsonl` (as 18 respostas de conversa).
+
+Requisitos do modelo:
+
+- **Ser suportado pelo transformers 4.46.3,** o do ambiente da 3090. Llama, Qwen2, Mistral e Gemma 2 servem; o Qwen3 não, porque exige o 4.51.
+- **Ter as camadas com os nomes `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj` e `down_proj`,** onde a LoRA é aplicada (`LORA_ALVOS` em `scripts/train_qlora.py`). Modelos que juntam essas camadas, como o Phi-3, precisam mudar essa lista.
+- **Caber na RTX 3090 em 4 bits.** Até uns 3 bilhões de parâmetros cabe com folga.
+- **Ter licença que permita o uso pretendido.** Modelos com acesso restrito, como o Llama 3.2, exigem aceitar a licença no Hugging Face e um `HF_TOKEN` no ambiente.
+
+O pad igual ao EOS (caso do Qwen) é resolvido sozinho pelo `train_qlora.py`. O modelo é avaliado com o próprio tokenizer, sem os marcadores de caixa, que só valem para o tokenizer v4 do Manacá.
+
+Tempo: o Qwen2.5-0.5B levou 54 minutos no modo só FastAPI. No modo instruct o volume de texto é cerca de 30% maior, e o tempo cresce com o tamanho do modelo: um modelo de 1,5 bilhão deve levar algumas horas.
 
 ## Arquivos
 
