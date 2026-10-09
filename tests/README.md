@@ -55,12 +55,23 @@ uv run --with-requirements requirements-dev.txt pytest tests/
   nomes já usados, a regressão da primeira colheita (`eliminar`, `object`,
   `emitido` e `visitas` passavam), a fonte por sufixo da Wikipédia, o corte
   pelos mais frequentes, e a leitura de JSONL com `\u2028` dentro do texto.
+- `test_template_alpaca.py` — o legado é exatamente o prompt dos adapters já
+  treinados, o `lncc` é igual ao `sft/train.py` do LNCC (com e sem entrada),
+  instrução e entrada são aparadas, e o nome do template vai e volta da pasta
+  do adapter (sem arquivo, legado; nome desconhecido falha com o nome).
+- `test_misturar_sft.py` — a amostra é determinística e respeita o teto, o
+  teto 0 pega a fonte inteira, `fonte=numero` é lido e o formato errado falha
+  com o valor, e fonte sem arquivo falha com o caminho.
+- `test_eval_conversa.py` — `virou_codigo` pega o arquivo FastAPI (regressão
+  do `class Oi(Base)`), a taxa é a fração que não virou código, e os pedidos
+  não falam de FastAPI e incluem casos com `input`.
 - `test_train_qlora.py` — `garantir_pad_distinto` com um `TokenizerFalso`:
   pad igual ao EOS (o caso do Qwen) vira um token de pad já existente, pad
   distinto fica como está, e sem candidato o erro cita o EOS.
   Com o v3, `textos_de_treino` e `marca_de_resposta` codificam prompt,
   resposta e o `### Resposta:` do mesmo jeito.
   Regressão do v4: o `</s>` fica cru no fim, sem `<|cola|>` no meio.
+  `cabem_inteiros` deixa de fora o exemplo maior que o limite.
 - `test_caixa_marcada.py` — o lugar do marcador (antes do espaço, camelCase,
   sigla), a ida e volta exata em casos difíceis (`İ`, `ß`, `ǅ`, `ª`, espaço
   duplo) e em todo o dataset, a recusa de texto que já tem o marcador, o

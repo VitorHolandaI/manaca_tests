@@ -22,6 +22,7 @@ from pathlib import Path
 
 from chat_gguf import TOKENIZER_PADRAO, URL_PADRAO, ClienteLlamaServer, responder
 from eval_code import _carregar_jsonl, _dedupe_por_instrucao
+from template_alpaca import TEMPLATES
 
 CLASSE = re.compile(r"^class (\w+)\(Base\):", re.MULTILINE)
 
@@ -53,6 +54,7 @@ def main() -> int:
     ap.add_argument("--por-entidade", type=int, default=2)
     ap.add_argument("--url", default=URL_PADRAO)
     ap.add_argument("--tokenizer", default=TOKENIZER_PADRAO)
+    ap.add_argument("--template", choices=sorted(TEMPLATES), default="legado")
     args = ap.parse_args()
 
     ref = escolher_por_entidade(
@@ -67,7 +69,9 @@ def main() -> int:
         Path(f"{saida}.ref").open("w", encoding="utf-8") as amostra,
     ):
         for numero, item in enumerate(ref, 1):
-            texto = responder(tok, cliente, item["instruction"], 1024)
+            texto = responder(
+                tok, cliente, item["instruction"], 1024, TEMPLATES[args.template]
+            )
             linha = {"instruction": item["instruction"], "output": texto}
             pred.write(json.dumps(linha, ensure_ascii=False) + "\n")
             amostra.write(json.dumps(item, ensure_ascii=False) + "\n")

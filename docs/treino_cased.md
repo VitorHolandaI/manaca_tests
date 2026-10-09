@@ -219,26 +219,23 @@ O Q8_0 é o menor arquivo com resultado medido igual ao F16. O Q4_K_M confirma q
 
 O modelo responde a qualquer pedido com um arquivo FastAPI, inclusive a "oi" (sai `class Oi(Base)`). O SFT só teve pedidos de FastAPI, e o ponto de partida é o Manacá base, que não conversa.
 
-## Próximo passo: versão que conversa
+## Versão que conversa (instruct FastAPI)
 
-Para o modelo conversar e só gerar FastAPI quando pedirem, o SFT precisa misturar instruções gerais com os pedidos de FastAPI. A receita do Manacá-1B-Instruct está no [repositório do LNCC](https://github.com/Instituto-IA-LNCC/manaca-1b-instruct) (`sft/prepare_data.py`, `sft/jaster/build_jaster.py`, `docs/data/`):
+O v4 respondia qualquer pedido com um arquivo FastAPI, porque o SFT só tinha esse tipo de exemplo; "oi" virava `class Oi(Base)`. O instruct mistura no SFT os pedidos de FastAPI com a receita de instrução do [Manacá-1B-Instruct do LNCC](https://github.com/Instituto-IA-LNCC/manaca-1b-instruct), no template deles (com acento e com `### Entrada:`).
 
-| Fonte | Dataset no Hugging Face | Conversão |
+Os dados gerais saíram do `sft/prepare_data.py` do LNCC, rodado sem mudança com as fontes da v2: Alpaca-PT, Aya (português), OASST1 (português), tradução (opus-100) e resumo (XLSum), 103.843 exemplos depois de deduplicação e corte de tamanho. As tarefas JASTER ficaram de fora. `scripts/misturar_sft.py` sorteou 12.815 deles por fonte (6.000, 3.000, os 315, 2.000 e 1.500), que entraram com os 7.932 de FastAPI. Todos cabem inteiros em 2.048 tokens. O SFT partiu do `manaca-cpt-v4`, com 3 épocas, e levou 4 h 22 na RTX 3090.
+
+| Teste | v4 (só FastAPI) | Instruct |
 | --- | --- | --- |
-| Alpaca-PT | `dominguesm/alpaca-data-pt-br` | instruction, input, output como estão |
-| Aya (pt) | `CohereForAI/aya_dataset` | `inputs` vira instrução, `targets` vira resposta, só idioma português |
-| OASST1 (pt) | `OpenAssistant/oasst1` | pares prompter e assistant com rank 0, só português |
-| Tradução | `Helsinki-NLP/opus-100`, en-pt, 20.000 primeiros | duas instruções por par (para inglês e para português) |
-| Resumo | `csebuetnlp/xlsum`, português, 10.000 primeiros | texto no input, resumo na resposta |
-| JASTER | ASSIN2, SICK-BR, FaQuAD, ENEM, HAREM, LeNER-Br, TweetSentBR, HateBR, Pirá, Mac-Morpho | tarefas de PLN em formato de instrução |
+| FastAPI, teste amplo: compile_rate / runs_rate | 1,0 / 1,0 | 1,0 / 1,0 |
+| FastAPI: entidade_rate / rotas / funcoes | 1,0 / 1,0 / 1,0 | 0,978 / 0,978 / 0,978 |
+| Conversa (18 pedidos gerais): resposta que não vira FastAPI | "oi" virava `class Oi(Base)` | 18 de 18 |
 
-A versão v2 do LNCC tem 141.404 exemplos, com deduplicação e corte de tamanho. O template deles tem preâmbulo próprio quando há `input` e o marcador `### Entrada:`, e o `train_qlora.py` deste projeto ainda ignora o campo `input`. O que falta fazer:
+Os 4 erros de FastAPI do instruct são todos `endereco` virando `Enderecamento`. `enderecamento` é um dos 2.000 nomes colhidos da Wikipédia e entrou no treino como entidade; a colheita tirava os nomes de teste exatos, mas não as palavras que começam com eles. O v4 resistiu a isso, e o instruct, que divide o treino com conversa, não. Falta recusar na colheita e no `gen_dataset.py` todo nome que comece com uma entidade de teste, e refazer o SFT.
 
-- [ ] Rodar o `sft/prepare_data.py` do LNCC (fontes da v2) ou reproduzir os filtros dele, e gravar o resultado no formato Alpaca.
-- [ ] Ensinar o `montar_texto` do `train_qlora.py` a usar `input`, com o preâmbulo e o `### Entrada:` do LNCC, e com a mesma codificação de caixa e fronteira.
-- [ ] Escolher a proporção. Os 141 mil exemplos inteiros levariam dezenas de horas na 3090 (os 7.932 de FastAPI levam 2 h 30 em 3 épocas); uma amostra de 10 a 20 mil por fonte, mais os 7.932 de FastAPI, cabe em 5 a 8 horas.
-- [ ] SFT a partir do `manaca-cpt-v4`, eval no teste amplo com `--base-4bit` (tem de continuar em 1,0) e um conjunto de pedidos de conversa que não pode gerar código.
-- [ ] Licença: Alpaca-PT é CC BY-NC e XLSum é CC BY-NC-SA, por isso o instruct do LNCC é CC BY-NC 4.0. Usando a mesma receita, o modelo daqui herda essa restrição; o Instruct-Aira v3 (Apache 2.0, 50 mil conversas em português) é a alternativa sem restrição.
+As respostas de conversa saem com maiúsculas certas ("Machado de Assis", "Canberra", "The cat sleeps in the sofa."), o que o Manacá original não fazia. Saudação, dicas, tradução, sentimento e mensagem de aniversário saíram razoáveis. Os defeitos são os de um modelo de 1,7 bilhão de parâmetros: repetição (a explicação da fotossíntese repete uma frase, o poema entra em loop), erros de fato ("o céu é azul porque é a cor do mar", "15 vezes 4 é 40 vezes 4") e um resumo que inventa detalhe. A geração do eval é greedy, que favorece repetição; uma penalidade de repetição no chat pode ajudar sem retreinar.
+
+Licença: Alpaca-PT é CC BY-NC e XLSum é CC BY-NC-SA, por isso o instruct do LNCC é CC BY-NC 4.0, e este instruct, treinado com a mesma receita, herda a restrição de uso não comercial.
 
 ## Licenças
 

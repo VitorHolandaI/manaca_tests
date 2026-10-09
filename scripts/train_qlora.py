@@ -30,20 +30,16 @@ from __future__ import annotations
 
 import argparse
 import json
-import random
 from pathlib import Path
 from typing import Protocol
 
 from caixa_marcada import codificar_para, usa_caixa_marcada
 from expandir_vocab import expandir_modelo
-from subword_sampling import AmostradorUnigram, ids_com_amostragem
+from subword_sampling import AmostradorUnigram, CollatorComAmostragem
+from template_alpaca import LEGADO, TEMPLATES, Template, montar_prompt, salvar_template
 
-PREAMBULO = (
-    "Abaixo esta uma instrucao que descreve uma tarefa. "
-    "Escreva uma resposta que atenda adequadamente ao pedido."
-)
-INSTRUCAO_MARCA = "\n\n### Instrucao:\n"
-RESPOSTA_MARCA = "\n\n### Resposta:\n"
+# igual nos dois templates (template_alpaca): o collator procura este marcador
+RESPOSTA_MARCA = LEGADO.resposta
 
 # a LoRA congela as embeddings: sem isso as linhas novas do v2 ficariam com o
 # init por media para sempre
@@ -60,8 +56,14 @@ LORA_ALVOS = [
 ]
 
 
-def montar_texto(instruction: str, saida: str, eos: str) -> str:
-    return f"{PREAMBULO}{INSTRUCAO_MARCA}{instruction.strip()}{RESPOSTA_MARCA}{saida.strip()}{eos}"
+def montar_texto(
+    instruction: str,
+    saida: str,
+    eos: str,
+    template: Template = LEGADO,
+    entrada: str = "",
+) -> str:
+    return f"{montar_prompt(template, instruction, entrada)}{saida.strip()}{eos}"
 
 
 def carregar_jsonl(caminho: Path) -> list[dict[str, str]]:
@@ -164,14 +166,19 @@ class TokenizerDeTreino(Protocol):
 
 
 def textos_de_treino(
-    linhas: list[dict[str, str]], tokenizer: TokenizerDeTreino
+    linhas: list[dict[str, str]],
+    tokenizer: TokenizerDeTreino,
+    template: Template = LEGADO,
 ) -> list[str]:
     """Prompt + resposta + eos; com o tokenizer v3/v4, a caixa vira marcador.
 
     Exemplo: textos_de_treino([{"instruction": "x", "output": "y"}], tok)
     """
     eos = tokenizer.eos_token or ""
-    textos = [montar_texto(r["instruction"], r["output"], "") for r in linhas]
+    textos = [
+        montar_texto(r["instruction"], r["output"], "", template, r.get("input", ""))
+        for r in linhas
+    ]
     if usa_caixa_marcada(tokenizer):
         # o eos entra cru: codificado, `</s>` virava `</<|cola|> s>` no v4
         textos = [codificar_para(tokenizer, t) for t in textos]
@@ -185,7 +192,20 @@ def marca_de_resposta(tokenizer: TokenizerDeTreino) -> str:
     return codificar_para(tokenizer, RESPOSTA_MARCA)
 
 
-def montar_dataset(linhas: list[dict[str, str]], tokenizer):
+def cabem_inteiros(ids: list[list[int]], max_tokens: int) -> list[int]:
+    """Indices dos exemplos que cabem em `max_tokens` sem corte.
+
+    Exemplo: cabem_inteiros([[1, 2], [1] * 9], 5) == [0]
+    """
+    return [i for i, seq in enumerate(ids) if len(seq) <= max_tokens]
+
+
+def montar_dataset(
+    linhas: list[dict[str, str]],
+    tokenizer,
+    template: Template = LEGADO,
+    max_tokens: int | None = None,
+):
     """Dataset com o texto cru E uma tokenizacao deterministica.
 
     O `input_ids` existe para o SFTTrainer pular a tokenizacao dele (ele devolve
@@ -194,24 +214,19 @@ def montar_dataset(linhas: list[dict[str, str]], tokenizer):
     """
     from datasets import Dataset
 
-    textos = textos_de_treino(linhas, tokenizer)
+    textos = textos_de_treino(linhas, tokenizer, template)
     codificado = tokenizer(textos, add_special_tokens=True)
+    ids, mascaras = codificado["input_ids"], codificado["attention_mask"]
+    if max_tokens is not None:
+        dentro = cabem_inteiros(ids, max_tokens)
+        print(
+            f"[qlora] {len(ids) - len(dentro)} exemplos maiores que {max_tokens} tokens sairam"
+        )
+        textos = [textos[i] for i in dentro]
+        ids, mascaras = [ids[i] for i in dentro], [mascaras[i] for i in dentro]
     return Dataset.from_dict(
-        {
-            "text": textos,
-            "input_ids": codificado["input_ids"],
-            "attention_mask": codificado["attention_mask"],
-        }
+        {"text": textos, "input_ids": ids, "attention_mask": mascaras}
     )
-
-
-def _indice(alvo: list[int], ids: list[int]) -> int | None:
-    """Posicao de `alvo` como subsequencia contigua de `ids`, ou None."""
-    n = len(alvo)
-    for i in range(len(ids) - n + 1):
-        if ids[i : i + n] == alvo:
-            return i
-    return None
 
 
 def caminho_do_tokenizer_json(model_id: str) -> Path:
@@ -222,65 +237,6 @@ def caminho_do_tokenizer_json(model_id: str) -> Path:
     from huggingface_hub import hf_hub_download
 
     return Path(hf_hub_download(model_id, "tokenizer.json"))
-
-
-class CollatorComAmostragem:
-    """Completion-only com a resposta re-segmentada por amostragem, a cada lote.
-
-    Subword regularization (Kudo 2018; Provilkov 2020): a mesma palavra aparece
-    com segmentacoes diferentes, o que quebra a dependencia de uma tokenizacao
-    canonica -- que e como o modelo decorou a grafia das 73 entidades. O prefixo
-    fica deterministico (Viterbi), entao o marcador de resposta sempre casa.
-
-    Exige `remove_unused_columns=False`: a coluna `text` precisa sobreviver ate
-    aqui, porque e dela que cada lote e re-tokenizado.
-    """
-
-    def __init__(
-        self,
-        tokenizer,
-        amostrador: AmostradorUnigram,
-        ids_marca: list[int],
-        semente: int = 0,
-    ) -> None:
-        self.tokenizer = tokenizer
-        self.amostrador = amostrador
-        self.ids_marca = list(ids_marca)
-        self.pad_id = tokenizer.pad_token_id
-        self.bos_id = tokenizer.bos_token_id
-        self.rng = random.Random(semente)
-        self.sem_caminho = 0
-
-    def _ids_do_exemplo(self, texto: str) -> list[int]:
-        ids = ids_com_amostragem(self.amostrador, texto, RESPOSTA_MARCA, self.rng)
-        if ids is None:
-            # o vocabulario nao cobre algum caractere: cai no deterministico
-            self.sem_caminho += 1
-            return list(self.tokenizer(texto).input_ids)
-        return [self.bos_id] + ids
-
-    def __call__(self, exemplos: list[dict]) -> dict:
-        import torch
-
-        entradas, rotulos = [], []
-        for exemplo in exemplos:
-            ids = self._ids_do_exemplo(exemplo["text"])
-            posicao = _indice(self.ids_marca, ids)
-            corte = posicao + len(self.ids_marca) if posicao is not None else 0
-            rotulo = list(ids)
-            rotulo[:corte] = [-100] * corte
-            entradas.append(ids)
-            rotulos.append(rotulo)
-        largura = max(len(x) for x in entradas)
-        return {
-            "input_ids": torch.tensor(
-                [x + [self.pad_id] * (largura - len(x)) for x in entradas]
-            ),
-            "attention_mask": torch.tensor(
-                [[1] * len(x) + [0] * (largura - len(x)) for x in entradas]
-            ),
-            "labels": torch.tensor([x + [-100] * (largura - len(x)) for x in rotulos]),
-        }
 
 
 def _carregar_modelo(args: argparse.Namespace, torch):
@@ -367,9 +323,10 @@ def treinar(args: argparse.Namespace) -> None:
 
     modelo, lora = _carregar_modelo(args, torch)
 
-    linhas = carregar_jsonl(Path(args.data))
-    treino = montar_dataset(linhas, tokenizer)
-    print(f"[qlora] {len(treino)} exemplos de {args.data}")
+    template = TEMPLATES[args.template]
+    linhas = [linha for caminho in args.data for linha in carregar_jsonl(Path(caminho))]
+    treino = montar_dataset(linhas, tokenizer, template, args.max_seq)
+    print(f"[qlora] {len(treino)} exemplos de {args.data} (template {template.nome})")
 
     ids_marca = ids_marcador(tokenizer, marca_de_resposta(tokenizer))
     if args.subword_alpha > 0:
@@ -426,13 +383,25 @@ def treinar(args: argparse.Namespace) -> None:
         )
     treinador.save_model(args.out)
     tokenizer.save_pretrained(args.out)
+    salvar_template(Path(args.out), template)
     print(f"[qlora] adapter salvo em {args.out}")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="QLoRA Manaca-1B (FastAPI PT-BR)")
     ap.add_argument("--model", default="AIInstituteLNCC/manaca-1b-base")
-    ap.add_argument("--data", default="data/fastapi_ptbr.jsonl")
+    ap.add_argument(
+        "--data",
+        nargs="+",
+        default=["data/fastapi_ptbr.jsonl"],
+        help="um ou mais JSONL Alpaca; os exemplos sao juntados (o Trainer embaralha)",
+    )
+    ap.add_argument(
+        "--template",
+        choices=sorted(TEMPLATES),
+        default="legado",
+        help="lncc: o template do Manaca instruct, com ### Entrada: (template_alpaca.py)",
+    )
     ap.add_argument(
         "--tokenizer",
         default=None,

@@ -88,3 +88,11 @@ def test_eos_fica_cru_no_fim_com_a_fronteira() -> None:
     linhas = [{"instruction": "Crie a rota", "output": "x = 1}"}]
     texto = textos_de_treino(linhas, TokenizerV4Falso())[0]  # type: ignore[arg-type]
     assert texto.endswith("}</s>")
+
+
+def test_cabem_inteiros_descarta_quem_passa_do_limite() -> None:
+    # cortado no max_seq, o exemplo perde o EOS e o modelo nao aprende a parar
+    from train_qlora import cabem_inteiros
+
+    ids = [[1, 2, 3], [1] * 10, [4, 5]]
+    assert cabem_inteiros(ids, 5) == [0, 2]

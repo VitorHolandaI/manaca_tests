@@ -94,12 +94,12 @@ def test_selecionar_junta_fontes_exclui_e_fica_com_os_mais_frequentes() -> None:
 
 def test_ler_textos_aguenta_separador_unicode(tmp_path: Path) -> None:
     caminho = tmp_path / "c.jsonl"
-    linhas = [{"text": "class A B:"}, {"text": "class Pedido:"}]
+    linhas = [{"text": "class A\u2028B:"}, {"text": "class Pedido:"}]
     caminho.write_text(
         "\n".join(json.dumps(x, ensure_ascii=False) for x in linhas) + "\n",
         encoding="utf-8",
     )
-    assert ler_textos(caminho) == ["class A B:", "class Pedido:"]
+    assert ler_textos(caminho) == ["class A\u2028B:", "class Pedido:"]
 
 
 def test_ler_textos_sem_arquivo_falha_com_o_caminho(tmp_path: Path) -> None:

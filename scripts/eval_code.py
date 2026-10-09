@@ -43,11 +43,9 @@ from caixa_marcada import (
     usa_caixa_marcada,
 )
 from restore_case import nomes_a_restaurar, restaurar
+from template_alpaca import LEGADO, Template, ler_template, montar_prompt
 
-PREAMBULO = (
-    "Abaixo esta uma instrucao que descreve uma tarefa. "
-    "Escreva uma resposta que atenda adequadamente ao pedido."
-)
+PREAMBULO = LEGADO.preambulo
 
 ROTAS = re.compile(r'@app\.(?:post|get|put|delete)\("[^"]+"')
 FUNCOES = re.compile(r"def \w+\(")
@@ -321,13 +319,17 @@ def _carregar_para_geracao(model_id: str, device: str, base_4bit: bool = False):
     return tok, (modelo if base_4bit else modelo.to(device)).eval()
 
 
-def _prompt(instruction: str) -> str:
-    return f"{PREAMBULO}\n\n### Instrucao:\n{instruction}\n\n### Resposta:\n"
+def _prompt(instruction: str, template: Template = LEGADO) -> str:
+    return montar_prompt(template, instruction)
 
 
-def prompts_para(itens: list[dict[str, str]], tok: TokenizerComVocab) -> list[str]:
-    """Prompt Alpaca de cada item; com o tokenizer v3, com marcador de caixa."""
-    prompts = [_prompt(e["instruction"]) for e in itens]
+def prompts_para(
+    itens: list[dict[str, str]], tok: TokenizerComVocab, template: Template = LEGADO
+) -> list[str]:
+    """Prompt Alpaca de cada item; com o tokenizer v3/v4, com marcador de caixa."""
+    prompts = [
+        montar_prompt(template, e["instruction"], e.get("input", "")) for e in itens
+    ]
     if not usa_caixa_marcada(tok):
         return prompts
     return [codificar_para(tok, p) for p in prompts]
@@ -409,7 +411,8 @@ def gerar_com_modelo(
     )
     tok, modelo = _carregar_para_geracao(model_id, device, base_4bit)
     itens = ref[:limite] if limite else ref
-    prompts = prompts_para(itens, tok)
+    # o adapter grava o template do treino (template_alpaca); sem arquivo, legado
+    prompts = prompts_para(itens, tok, ler_template(Path(model_id)))
     textos = desfazer_marcador(
         _gerar_em_lotes(modelo, tok, prompts, device, max_novos, lote), tok
     )

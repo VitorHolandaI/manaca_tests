@@ -9,7 +9,8 @@ ids (o /completion aceita, e sem string nao poe BOS sozinho) e os ids gerados
 voltam com `return_tokens`; tokenizar e decodificar ficam deste lado.
 
 Com --oficial, conversa com o Manaca instruct original do LNCC (o GGUF de
-models/manaca-instruct-ugm), com o tokenizer e o template do chat_oficial.py.
+models/manaca-instruct-ugm), com o tokenizer oficial e o template lncc,
+que e o do chat_oficial.py. --template lncc serve o SFT com conversa.
 
 Uso:
     llama-server -m models/manaca-fastapi-v4-q8_0.gguf --port 8080 -ngl 99
@@ -27,10 +28,10 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable
 from typing import Protocol
 
 from eval_code import cortar_no_fim, desfazer_marcador, prompts_para
+from template_alpaca import LEGADO, LNCC, TEMPLATES, Template
 
 URL_PADRAO = "http://127.0.0.1:8080"
 TOKENIZER_PADRAO = "models/manaca-tokenizer-v4"
@@ -89,13 +90,12 @@ def responder(  # type: ignore[no-untyped-def]
     cliente: GeradorDeTokens,
     pedido: str,
     max_novos: int,
-    montar: Callable[[str], str] | None = None,
+    template: Template = LEGADO,
 ) -> str:
-    """Resposta para um pedido; `montar` troca o template do eval por outro."""
-    if montar is not None:
-        prompt = montar(pedido)
-    else:
-        prompt = prompts_para([{"instruction": pedido.strip(), "output": ""}], tok)[0]
+    """Resposta para um pedido, no template com que o modelo foi treinado."""
+    prompt = prompts_para(
+        [{"instruction": pedido.strip(), "output": ""}], tok, template
+    )[0]
     ids = tok(prompt, add_special_tokens=True)["input_ids"]
     fins = {t for t in (tok.eos_token_id, tok.pad_token_id) if t is not None}
     gerados = cortar_no_fim(cliente.gerar(ids, max_novos), fins)
@@ -104,7 +104,7 @@ def responder(  # type: ignore[no-untyped-def]
 
 
 def _laco(  # type: ignore[no-untyped-def]
-    tok, cliente: GeradorDeTokens, max_novos: int, montar: Callable[[str], str] | None
+    tok, cliente: GeradorDeTokens, max_novos: int, template: Template
 ) -> None:
     print("Pedido em portugues (Enter envia; 'sair' ou Ctrl-D encerra).")
     while True:
@@ -117,37 +117,39 @@ def _laco(  # type: ignore[no-untyped-def]
         if not pedido.strip():
             continue
         inicio = time.monotonic()
-        print(responder(tok, cliente, pedido, max_novos, montar))
+        print(responder(tok, cliente, pedido, max_novos, template))
         print(f"[{time.monotonic() - inicio:.0f} s]", file=sys.stderr)
 
 
 def main() -> int:
     from transformers import AutoTokenizer
 
-    ap = argparse.ArgumentParser(description="Chat com o GGUF do Manaca-FastAPI v4")
+    ap = argparse.ArgumentParser(description="Chat com o GGUF do Manaca-FastAPI")
     ap.add_argument("--url", default=URL_PADRAO)
     ap.add_argument("--tokenizer", default=None, help="padrao: v4, ou o oficial")
     ap.add_argument(
+        "--template",
+        choices=sorted(TEMPLATES),
+        default="legado",
+        help="o do treino do modelo servido (lncc no SFT com conversa)",
+    )
+    ap.add_argument(
         "--oficial",
         action="store_true",
-        help="Manaca instruct original: tokenizer e template do chat_oficial.py",
+        help="Manaca instruct original: tokenizer oficial e template lncc",
     )
     ap.add_argument("--prompt", default=None, help="um pedido so, sem o laco")
     ap.add_argument("--max-novos", type=int, default=MAX_NOVOS_PADRAO)
     args = ap.parse_args()
 
-    montar: Callable[[str], str] | None = None
-    padrao = TOKENIZER_PADRAO
-    if args.oficial:
-        from chat_oficial import montar_prompt
-
-        montar, padrao = montar_prompt, TOKENIZER_OFICIAL
+    template = LNCC if args.oficial else TEMPLATES[args.template]
+    padrao = TOKENIZER_OFICIAL if args.oficial else TOKENIZER_PADRAO
     tok = AutoTokenizer.from_pretrained(args.tokenizer or padrao)
     cliente = ClienteLlamaServer(args.url)
     if args.prompt:
-        print(responder(tok, cliente, args.prompt, args.max_novos, montar))
+        print(responder(tok, cliente, args.prompt, args.max_novos, template))
         return 0
-    _laco(tok, cliente, args.max_novos, montar)
+    _laco(tok, cliente, args.max_novos, template)
     return 0
 
 

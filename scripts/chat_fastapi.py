@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from pathlib import Path
 
 from eval_code import (
     _base_do_adapter,
@@ -27,6 +28,7 @@ from eval_code import (
     prompts_para,
 )
 from nf4_simulado import simular_nf4
+from template_alpaca import LEGADO, Template, ler_template
 
 ADAPTER_PADRAO = "checkpoints/manaca-fastapi-v4"
 MAX_NOVOS_PADRAO = 1024
@@ -58,11 +60,15 @@ def carregar(adapter: str, nf4: bool, device: str):  # type: ignore[no-untyped-d
     return tok, modelo.to(device).eval()
 
 
-def responder(tok, modelo, pedido: str, device: str, max_novos: int) -> str:  # type: ignore[no-untyped-def]
+def responder(
+    tok, modelo, pedido: str, device: str, max_novos: int, template: Template = LEGADO
+) -> str:  # type: ignore[no-untyped-def]
     """Codigo gerado para um pedido, ja com a caixa devolvida."""
     import torch
 
-    prompt = prompts_para([{"instruction": pedido.strip(), "output": ""}], tok)[0]
+    prompt = prompts_para(
+        [{"instruction": pedido.strip(), "output": ""}], tok, template
+    )[0]
     entrada = tok(prompt, return_tensors="pt").to(device)
     with torch.inference_mode():
         saida = modelo.generate(
@@ -78,7 +84,7 @@ def responder(tok, modelo, pedido: str, device: str, max_novos: int) -> str:  # 
     return desfazer_marcador([texto], tok)[0]
 
 
-def _laco(tok, modelo, device: str, max_novos: int) -> None:  # type: ignore[no-untyped-def]
+def _laco(tok, modelo, device: str, max_novos: int, template: Template) -> None:  # type: ignore[no-untyped-def]
     print("Pedido em portugues (Enter envia; 'sair' ou Ctrl-D encerra).")
     while True:
         try:
@@ -90,7 +96,7 @@ def _laco(tok, modelo, device: str, max_novos: int) -> None:  # type: ignore[no-
         if not pedido.strip():
             continue
         inicio = time.monotonic()
-        print(responder(tok, modelo, pedido, device, max_novos))
+        print(responder(tok, modelo, pedido, device, max_novos, template))
         print(f"[{time.monotonic() - inicio:.0f} s]", file=sys.stderr)
 
 
@@ -108,10 +114,11 @@ def main() -> int:
     device = args.device or _dispositivo()
     print(f"[chat] carregando {args.adapter} em {device}...", file=sys.stderr)
     tok, modelo = carregar(args.adapter, not args.sem_nf4, device)
+    template = ler_template(Path(args.adapter))
     if args.prompt:
-        print(responder(tok, modelo, args.prompt, device, args.max_novos))
+        print(responder(tok, modelo, args.prompt, device, args.max_novos, template))
         return 0
-    _laco(tok, modelo, device, args.max_novos)
+    _laco(tok, modelo, device, args.max_novos, template)
     return 0
 
 

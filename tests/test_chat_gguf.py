@@ -58,10 +58,13 @@ def test_responder_codifica_o_pedido_e_decodifica_a_saida() -> None:
     reason="precisa do tokenizer v4 e do transformers",
 )
 def test_responder_usa_o_template_que_receber() -> None:
+    from caixa_marcada import codificar_para
     from chat_gguf import responder
+    from template_alpaca import LNCC, montar_prompt
     from transformers import AutoTokenizer
 
     tok = AutoTokenizer.from_pretrained(TOKENIZER_V4)
     cliente = ClienteFalso([tok.eos_token_id])
-    responder(tok, cliente, "oi", 8, montar=lambda p: f"pergunta: {p}")
-    assert cliente.recebido == tok("pergunta: oi", add_special_tokens=True)["input_ids"]
+    responder(tok, cliente, "oi", 8, template=LNCC)
+    esperado = codificar_para(tok, montar_prompt(LNCC, "oi"))
+    assert cliente.recebido == tok(esperado, add_special_tokens=True)["input_ids"]

@@ -32,6 +32,8 @@ import random
 import unicodedata
 from pathlib import Path
 
+from template_alpaca import LEGADO
+
 NOTA_BYTE_FALLBACK = -1e6
 RAIZ_AMOSTRAGEM = 0.0
 
@@ -47,9 +49,7 @@ class AmostradorUnigram:
 
     def __init__(self, caminho_tokenizer_json: Path, alpha: float = 0.2) -> None:
         if not 0.0 < alpha <= 1.0:
-            raise ValueError(
-                f"alpha invalido: {alpha!r}; esperado float em (0, 1]"
-            )
+            raise ValueError(f"alpha invalido: {alpha!r}; esperado float em (0, 1]")
         dados = json.loads(Path(caminho_tokenizer_json).read_text(encoding="utf-8"))
         modelo = dados["model"]
         self.alpha = alpha
@@ -67,7 +67,9 @@ class AmostradorUnigram:
     def _arestas(self, span: str) -> list[list[tuple[int, tuple[int, ...], float]]]:
         """Arestas por posicao final: (inicio, ids, nota da peca)."""
         n = len(span)
-        arestas: list[list[tuple[int, tuple[int, ...], float]]] = [[] for _ in range(n + 1)]
+        arestas: list[list[tuple[int, tuple[int, ...], float]]] = [
+            [] for _ in range(n + 1)
+        ]
         for i in range(n):
             teto = min(self.comprimento_max, n - i)
             for tam in range(1, teto + 1):
@@ -128,7 +130,9 @@ class AmostradorUnigram:
                 acumulado[fim] = _log_soma_exp(pesos)
         return acumulado
 
-    def _sortear_caminho(self, arestas, acumulado: list[float], n: int, rng) -> list[int]:
+    def _sortear_caminho(
+        self, arestas, acumulado: list[float], n: int, rng
+    ) -> list[int]:
         saida: list[int] = []
         fim = n
         while fim > 0:
@@ -208,3 +212,71 @@ def ids_com_amostragem(
     if resposta is None:
         return None
     return prefixo + resposta
+
+
+def _indice(alvo: list[int], ids: list[int]) -> int | None:
+    """Posicao de `alvo` como subsequencia contigua de `ids`, ou None."""
+    n = len(alvo)
+    for i in range(len(ids) - n + 1):
+        if ids[i : i + n] == alvo:
+            return i
+    return None
+
+
+class CollatorComAmostragem:
+    """Completion-only com a resposta re-segmentada por amostragem, a cada lote.
+
+    Subword regularization (Kudo 2018; Provilkov 2020): a mesma palavra aparece
+    com segmentacoes diferentes, o que quebra a dependencia de uma tokenizacao
+    canonica -- que e como o modelo decorou a grafia das 73 entidades. O prefixo
+    fica deterministico (Viterbi), entao o marcador de resposta sempre casa.
+
+    Exige `remove_unused_columns=False`: a coluna `text` precisa sobreviver ate
+    aqui, porque e dela que cada lote e re-tokenizado.
+    """
+
+    def __init__(
+        self,
+        tokenizer,
+        amostrador: AmostradorUnigram,
+        ids_marca: list[int],
+        semente: int = 0,
+    ) -> None:
+        self.tokenizer = tokenizer
+        self.amostrador = amostrador
+        self.ids_marca = list(ids_marca)
+        self.pad_id = tokenizer.pad_token_id
+        self.bos_id = tokenizer.bos_token_id
+        self.rng = random.Random(semente)
+        self.sem_caminho = 0
+
+    def _ids_do_exemplo(self, texto: str) -> list[int]:
+        ids = ids_com_amostragem(self.amostrador, texto, LEGADO.resposta, self.rng)
+        if ids is None:
+            # o vocabulario nao cobre algum caractere: cai no deterministico
+            self.sem_caminho += 1
+            return list(self.tokenizer(texto).input_ids)
+        return [self.bos_id] + ids
+
+    def __call__(self, exemplos: list[dict]) -> dict:
+        import torch
+
+        entradas, rotulos = [], []
+        for exemplo in exemplos:
+            ids = self._ids_do_exemplo(exemplo["text"])
+            posicao = _indice(self.ids_marca, ids)
+            corte = posicao + len(self.ids_marca) if posicao is not None else 0
+            rotulo = list(ids)
+            rotulo[:corte] = [-100] * corte
+            entradas.append(ids)
+            rotulos.append(rotulo)
+        largura = max(len(x) for x in entradas)
+        return {
+            "input_ids": torch.tensor(
+                [x + [self.pad_id] * (largura - len(x)) for x in entradas]
+            ),
+            "attention_mask": torch.tensor(
+                [[1] * len(x) + [0] * (largura - len(x)) for x in entradas]
+            ),
+            "labels": torch.tensor([x + [-100] * (largura - len(x)) for x in rotulos]),
+        }

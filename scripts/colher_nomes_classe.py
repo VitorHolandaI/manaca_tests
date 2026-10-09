@@ -144,7 +144,7 @@ def ler_textos(caminho: Path) -> list[str]:
     """Campo `text` de cada linha de um JSONL colhido."""
     if not caminho.is_file():
         raise FileNotFoundError(f"jsonl colhido nao encontrado: {caminho}")
-    # split("\n"): splitlines() quebra no   cru de dentro das strings
+    # split("\n"): splitlines() quebra no \u2028 cru de dentro das strings
     linhas = caminho.read_text(encoding="utf-8").split("\n")
     return [json.loads(linha)["text"] for linha in linhas if linha.strip()]
 

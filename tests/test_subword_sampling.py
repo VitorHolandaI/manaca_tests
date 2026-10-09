@@ -5,6 +5,7 @@ import random
 from pathlib import Path
 
 import pytest
+import subword_sampling
 from subword_sampling import (
     AmostradorUnigram,
     ids_com_amostragem,
@@ -99,7 +100,7 @@ def test_ids_com_amostragem_mantem_o_marcador() -> None:
     for _ in range(20):
         ids = ids_com_amostragem(amostrador, texto, tq.RESPOSTA_MARCA, rng)
         assert ids is not None
-        assert tq._indice(ids_marca, ids) is not None
+        assert subword_sampling._indice(ids_marca, ids) is not None
 
 
 @precisa_do_modelo
@@ -107,7 +108,9 @@ def test_ids_com_amostragem_sem_marca_vira_none() -> None:
     pytest.importorskip("tokenizers")
     amostrador = AmostradorUnigram(TOKENIZER_JSON, alpha=0.2)
     assert (
-        ids_com_amostragem(amostrador, "texto sem marcador", "\n\n### Resposta:\n", random.Random(0))
+        ids_com_amostragem(
+            amostrador, "texto sem marcador", "\n\n### Resposta:\n", random.Random(0)
+        )
         is None
     )
 
@@ -137,7 +140,7 @@ def test_exemplo_para_collator_mantem_o_text_para_o_amostrador() -> None:
     assert torch is not None
     tok = AutoTokenizer.from_pretrained(str(RAIZ / "models" / "manaca-hf-official"))
     amostrador = AmostradorUnigram(TOKENIZER_JSON, alpha=0.2)
-    collator = tq.CollatorComAmostragem(
+    collator = subword_sampling.CollatorComAmostragem(
         tok, amostrador, tq.ids_marcador(tok, tq.RESPOSTA_MARCA)
     )
     linha = {"text": "abc", "input_ids": [1], "attention_mask": [1]}
@@ -153,7 +156,7 @@ def test_collator_mascara_o_prompt_e_amostra_a_resposta() -> None:
 
     tok = AutoTokenizer.from_pretrained(str(RAIZ / "models" / "manaca-hf-official"))
     amostrador = AmostradorUnigram(TOKENIZER_JSON, alpha=0.2)
-    collator = tq.CollatorComAmostragem(
+    collator = subword_sampling.CollatorComAmostragem(
         tok, amostrador, tq.ids_marcador(tok, tq.RESPOSTA_MARCA)
     )
     texto = tq.montar_texto("crie um endpoint", "from fastapi import FastAPI\n", "</s>")
