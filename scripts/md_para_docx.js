@@ -1,5 +1,5 @@
 // Gera docs/treino_cased.docx a partir do .md: titulo, secoes, paragrafos,
-// listas, tabelas, blocos e `codigo`, [links]. So o subconjunto que o doc usa.
+// listas, tabelas, blocos, `codigo`, **negrito** e [links]. So o subconjunto que o doc usa.
 // Uso: npm install --prefix /tmp/md docx
 //      NODE_PATH=/tmp/md/node_modules node scripts/md_para_docx.js entrada.md saida.docx
 const fs = require("fs");
@@ -14,7 +14,7 @@ const LARGURA = 9026; // A4 com margens de 1440 DXA
 
 function runs(texto, extra = {}) {
   const out = [];
-  const re = /(`[^`]+`|\[[^\]]+\]\([^)]+\))/g;
+  const re = /(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g;
   let ult = 0;
   let m;
   while ((m = re.exec(texto))) {
@@ -22,6 +22,8 @@ function runs(texto, extra = {}) {
     const t = m[0];
     if (t.startsWith("`")) {
       out.push(new d.TextRun({ text: t.slice(1, -1), font: "Consolas", ...extra }));
+    } else if (t.startsWith("**")) {
+      out.push(new d.TextRun({ text: t.slice(2, -2), ...extra, bold: true }));
     } else {
       const [, rotulo, url] = t.match(/\[([^\]]+)\]\(([^)]+)\)/);
       out.push(new d.ExternalHyperlink({ link: url, children: [new d.TextRun({ text: rotulo, style: "Hyperlink", ...extra })] }));
