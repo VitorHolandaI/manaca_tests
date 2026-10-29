@@ -5,8 +5,8 @@
 # mede as duas coisas que nao podem quebrar: o teste amplo de FastAPI e a
 # conversa (eval_conversa.py). Os dois evals carregam o base em 4 bits, como
 # o QLoRA treinou o adapter.
-# Uso (na 3090, dentro do tmux):
-#   scripts/rodar_instruct_3090.sh 2>&1 | tee logs/instruct.log
+# Uso (na 3060, dentro do tmux):
+#   scripts/rodar_instruct_3060.sh 2>&1 | tee logs/instruct.log
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -25,10 +25,10 @@ etapa() {
     echo "[$(date '+%F %T')] <<< ${nome} ok"
 }
 
-[[ -x "$PY" ]] || { echo "sem $PY; rode antes o rodar_tudo_3090.sh" >&2; exit 1; }
-[[ -d "$CPT" ]] || { echo "sem $CPT; rode o rodar_v4_3090.sh" >&2; exit 1; }
+[[ -x "$PY" ]] || { echo "sem $PY; rode antes o rodar_tudo_3060.sh" >&2; exit 1; }
+[[ -d "$CPT" ]] || { echo "sem $CPT; rode o rodar_v4_3060.sh" >&2; exit 1; }
 for f in "${DADOS[@]}"; do
-    [[ -f "$f" ]] || { echo "sem $f; rode o sync_3090.sh" >&2; exit 1; }
+    [[ -f "$f" ]] || { echo "sem $f; rode o sync_3060.sh" >&2; exit 1; }
 done
 
 etapa i1_smoke $PY scripts/train_qlora.py --model "$CPT" --data "${DADOS[@]}" \

@@ -43,7 +43,7 @@ Teste amplo: 182 pedidos de FastAPI sobre 12 entidades fora do treino, avaliados
 | **Manacá v4 instruct (entregue)** | **97,8%** | **100%** | **100%** | **18 de 18 em texto** |
 | Qwen2.5-0.5B, mesmo SFT (referência) | 100% | 100% | 100% | n/d |
 
-O Manacá saiu de um pré-treino todo em minúsculas e sem código (41,9 bilhões de tokens em português); o Qwen2.5 teve 18 trilhões, com código. A diferença foi fechada com cerca de 250 milhões de tokens de pré-treino continuado numa RTX 3090.
+O Manacá saiu de um pré-treino todo em minúsculas e sem código (41,9 bilhões de tokens em português); o Qwen2.5 teve 18 trilhões, com código. A diferença foi fechada com cerca de 250 milhões de tokens de pré-treino continuado numa RTX 3060.
 
 ## Como ver funcionando
 
@@ -90,10 +90,10 @@ Todo modelo passa pelo mesmo SFT (QLoRA 4 bits, LoRA r=32, 3 épocas, os mesmos 
 
 ### O benchmark com o Qwen
 
-O controle foi o [Qwen2.5-0.5B](https://huggingface.co/Qwen/Qwen2.5-0.5B) base, com metade do tamanho do Manacá, treinado só com os 7.932 pedidos de FastAPI no template antigo. Levou 54 minutos de SFT na RTX 3090. Para reproduzir:
+O controle foi o [Qwen2.5-0.5B](https://huggingface.co/Qwen/Qwen2.5-0.5B) base, com metade do tamanho do Manacá, treinado só com os 7.932 pedidos de FastAPI no template antigo. Levou 54 minutos de SFT na RTX 3060. Para reproduzir:
 
 ```
-MODO=fastapi scripts/comparar_modelo_3090.sh Qwen/Qwen2.5-0.5B qwen05-fastapi
+MODO=fastapi scripts/comparar_modelo_3060.sh Qwen/Qwen2.5-0.5B qwen05-fastapi
 ```
 
 | Modelo | Nome da classe | Compila | App sobe e responde | Conversa |
@@ -106,18 +106,18 @@ Ele serviu para separar o problema: um modelo que já sabe maiúscula aprende a 
 
 ### Rodar com outro modelo
 
-Na RTX 3090, com o projeto sincronizado (`scripts/sync_3090.sh`):
+Na RTX 3060, com o projeto sincronizado (`scripts/sync_3060.sh`):
 
 ```
-scripts/comparar_modelo_3090.sh <id no Hugging Face> <nome curto>
+scripts/comparar_modelo_3060.sh <id no Hugging Face> <nome curto>
 ```
 
 Exemplos:
 
 ```
-scripts/comparar_modelo_3090.sh Qwen/Qwen2.5-0.5B qwen05
-scripts/comparar_modelo_3090.sh Qwen/Qwen2.5-1.5B qwen15
-scripts/comparar_modelo_3090.sh TucanoBR/Tucano-2b4-instruct tucano
+scripts/comparar_modelo_3060.sh Qwen/Qwen2.5-0.5B qwen05
+scripts/comparar_modelo_3060.sh Qwen/Qwen2.5-1.5B qwen15
+scripts/comparar_modelo_3060.sh TucanoBR/Tucano-2b4-instruct tucano
 ```
 
 O padrão (`MODO=instruct`) treina como o modelo entregue: FastAPI junto com o mix de instrução do LNCC, no template `lncc`. `MODO=fastapi` treina só com FastAPI, como no benchmark do Qwen acima. `EPOCAS=` muda o número de épocas.
@@ -132,9 +132,9 @@ Os detalhes ficam em `results/comparar_<nome>.json` (todas as métricas e as 10 
 
 Requisitos do modelo:
 
-- **Ser suportado pelo transformers 4.46.3,** o do ambiente da 3090. Llama, Qwen2, Mistral e Gemma 2 servem; o Qwen3 não, porque exige o 4.51.
+- **Ser suportado pelo transformers 4.46.3,** o do ambiente da 3060. Llama, Qwen2, Mistral e Gemma 2 servem; o Qwen3 não, porque exige o 4.51.
 - **Ter as camadas com os nomes `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj` e `down_proj`,** onde a LoRA é aplicada (`LORA_ALVOS` em `scripts/train_qlora.py`). Modelos que juntam essas camadas, como o Phi-3, precisam mudar essa lista.
-- **Caber na RTX 3090 em 4 bits.** Até uns 3 bilhões de parâmetros cabe com folga.
+- **Caber na RTX 3060 em 4 bits.** Até uns 3 bilhões de parâmetros cabe com folga.
 - **Ter licença que permita o uso pretendido.** Modelos com acesso restrito, como o Llama 3.2, exigem aceitar a licença no Hugging Face e um `HF_TOKEN` no ambiente.
 
 O pad igual ao EOS (caso do Qwen) é resolvido sozinho pelo `train_qlora.py`. O modelo é avaliado com o próprio tokenizer, sem os marcadores de caixa, que só valem para o tokenizer v4 do Manacá.
@@ -181,7 +181,7 @@ Além disso, o texto passa por uma conversão exata antes e depois do modelo (`s
 ## Como foi feito
 
 1. **Tokenizer.** O Manacá baixa a caixa de todo texto. O v4 representa a maiúscula e a ausência de espaço com 3 tokens próprios, de modo que cada palavra tem uma forma só: `class Comentario` e `um comentario` usam a mesma peça `▁comentario`. É o esquema de [Land e Meister](https://arxiv.org/html/2608.08847), estendido para identificadores de código.
-2. **Pré-treino continuado** em três etapas, todas na RTX 3090: código Python em português colhido do GitHub, Wikipédia e documentação do FastAPI (35 milhões de tokens); depois mais 65 milhões de tokens do [GigaVerbo-v2](https://huggingface.co/datasets/Polygl0t/gigaverbo-v2), já com o marcador; depois a mesma base com o marcador de espaço. Cerca de 9 horas cada uma das duas últimas.
+2. **Pré-treino continuado** em três etapas, todas na RTX 3060: código Python em português colhido do GitHub, Wikipédia e documentação do FastAPI (35 milhões de tokens); depois mais 65 milhões de tokens do [GigaVerbo-v2](https://huggingface.co/datasets/Polygl0t/gigaverbo-v2), já com o marcador; depois a mesma base com o marcador de espaço. Cerca de 9 horas cada uma das duas últimas.
 3. **Dataset de FastAPI** gerado por código: 7.932 pedidos sobre 2.339 nomes de entidade (73 fixos, 266 extras e 2.000 colhidos), cada resposta um arquivo completo que roda. 12 entidades ficam fora do treino para o teste.
 4. **SFT** com LoRA (QLoRA 4 bits), juntando os pedidos de FastAPI com 12.815 exemplos da receita de instrução do [Manacá-1B-Instruct](https://github.com/Instituto-IA-LNCC/manaca-1b-instruct) (Alpaca-PT, Aya, OASST1, tradução e resumo), no template deles. 3 épocas, 4 h 22.
 
@@ -189,15 +189,15 @@ O passo a passo completo, com cada experimento que não deu certo e por quê, es
 
 ## Reproduzir o treino
 
-Na RTX 3090, depois de `scripts/sync_3090.sh` a partir desta máquina, na ordem:
+Na RTX 3060, depois de `scripts/sync_3060.sh` a partir desta máquina, na ordem:
 
 | Script | O que faz | Tempo aproximado |
 | --- | --- | --- |
-| `scripts/rodar_tudo_3090.sh` | cria o ambiente Python | minutos |
-| `scripts/rodar_cpt_grande_3090.sh` | colhe código e Wikipédia, CPT de 35M tokens | 5 h |
-| `scripts/rodar_v3_3090.sh` | colhe o GigaVerbo, CPT com o marcador de caixa | 11 h |
-| `scripts/rodar_v4_3090.sh` | CPT com o marcador de espaço | 12 h |
-| `scripts/rodar_instruct_3090.sh` | SFT com conversa e FastAPI, e as duas avaliações | 4 h 40 |
+| `scripts/rodar_tudo_3060.sh` | cria o ambiente Python | minutos |
+| `scripts/rodar_cpt_grande_3060.sh` | colhe código e Wikipédia, CPT de 35M tokens | 5 h |
+| `scripts/rodar_v3_3060.sh` | colhe o GigaVerbo, CPT com o marcador de caixa | 11 h |
+| `scripts/rodar_v4_3060.sh` | CPT com o marcador de espaço | 12 h |
+| `scripts/rodar_instruct_3060.sh` | SFT com conversa e FastAPI, e as duas avaliações | 4 h 40 |
 
 Os dados de instrução vêm do `sft/prepare_data.py` do LNCC (fontes da v2) e de `scripts/misturar_sft.py`.
 

@@ -3,9 +3,9 @@
 # colhe prosa do GigaVerbo-v2, monta o corpus, smoke + CPT a partir do CPT
 # grande (remapeado peca por peca), SFT so-LoRA e eval no teste amplo.
 # Para no primeiro erro; cada etapa grava em logs/. Pre-requisitos: o .venv do
-# rodar_tudo_3090.sh, o CPT grande em checkpoints/ e os JSONL de data/colhido/.
-# Uso (na 3090, dentro do tmux):
-#   scripts/rodar_v3_3090.sh 2>&1 | tee logs/v3.log
+# rodar_tudo_3060.sh, o CPT grande em checkpoints/ e os JSONL de data/colhido/.
+# Uso (na 3060, dentro do tmux):
+#   scripts/rodar_v3_3060.sh 2>&1 | tee logs/v3.log
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -25,8 +25,8 @@ etapa() {
     echo "[$(date '+%F %T')] <<< ${nome} ok"
 }
 
-[[ -x "$PY" ]] || { echo "sem $PY; rode antes o rodar_tudo_3090.sh" >&2; exit 1; }
-[[ -f "$V3/tokenizer.json" ]] || { echo "sem $V3; rode o sync_3090.sh" >&2; exit 1; }
+[[ -x "$PY" ]] || { echo "sem $PY; rode antes o rodar_tudo_3060.sh" >&2; exit 1; }
+[[ -f "$V3/tokenizer.json" ]] || { echo "sem $V3; rode o sync_3060.sh" >&2; exit 1; }
 [[ -d "$ORIGEM" ]] || { echo "sem $ORIGEM; o v3 parte do CPT grande" >&2; exit 1; }
 for f in codigo_ptbr wiki_ptbr; do
     [[ -f "data/colhido/$f.jsonl" ]] || { echo "sem data/colhido/$f.jsonl" >&2; exit 1; }

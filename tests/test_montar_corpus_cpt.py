@@ -139,7 +139,7 @@ def test_montar_com_extra_aplica_guarda_e_val_por_origem(tmp_path: Path) -> None
 
 def test_ler_extra_aguenta_separador_unicode_dentro_do_texto(tmp_path: Path) -> None:
     # regressao: splitlines() partia a linha no \u2028 cru que o json.dumps
-    # (ensure_ascii=False) deixa na string, e a 3090 caiu na linha 3131
+    # (ensure_ascii=False) deixa na string, e a 3060 caiu na linha 3131
     texto = "x = 'a\u2028b\x85c'"
     extra = _extra(
         tmp_path,

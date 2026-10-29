@@ -1,9 +1,9 @@
-# Stack do treino na RTX 3090 (CUDA 12.4). train_qlora.py usa a API do
+# Stack do treino na RTX 3060 (CUDA 12.4). train_qlora.py usa a API do
 # trl 0.12.2 (DataCollatorForCompletionOnlyLM, processing_class,
 # max_seq_length) -- nao suba versao sem rodar o --smoke de novo.
 # Resolvido com `uv pip compile` para py3.12/linux em 2026-09-28.
 #
-#   uv venv --python 3.12 && uv pip install -r requirements-3090.txt \
+#   uv venv --python 3.12 && uv pip install -r requirements-3060.txt \
 #       --index-strategy unsafe-best-match
 #
 # A flag e obrigatoria: o indice do pytorch tambem publica `requests`, e so

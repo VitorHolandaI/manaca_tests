@@ -155,7 +155,7 @@ def test_expandir_modelo_inicia_entrada_e_saida() -> None:
 @precisa_do_torch
 def test_expandir_modelo_aceita_matriz_com_padding() -> None:
     # regressao: o manaca-1b-base tem 64128 linhas para 64000 pecas, e a
-    # checagem exata derrubou o smoke do CPT na 3090
+    # checagem exata derrubou o smoke do CPT na 3060
     velho, novo = _tokenizers()
     modelo = ModeloFalso(velho.get_vocab_size() + 128)
     novas = expandir_modelo(modelo, VELHO_JSON, NOVO_JSON)  # type: ignore[arg-type]

@@ -14,7 +14,7 @@ cada --eval-steps. Val subindo acima da linha de base = o modelo esta perdendo
 o que sabia; pare e baixe o lr.
 
 ATENCAO: nao executado na maquina de desenvolvimento (sem NVIDIA). Rode na RTX
-3090 com --smoke primeiro, no stack de requirements-3090.txt.
+3060 com --smoke primeiro, no stack de requirements-3060.txt.
 
 Uso:
     python scripts/expandir_vocab.py            # monta models/manaca-tokenizer-v2
@@ -174,7 +174,7 @@ def treinar(args: argparse.Namespace) -> None:
         warmup_ratio=0.05,
         bf16=True,
         gradient_checkpointing=True,
-        # mesmo calculo do train_qlora --full: Adam fp32 nao cabe na 3090
+        # mesmo calculo do train_qlora --full: Adam fp32 nao cabe na 3060
         optim="adamw_bnb_8bit",
         logging_steps=1,
         eval_strategy="steps",

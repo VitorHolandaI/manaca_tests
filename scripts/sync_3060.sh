@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Sincroniza o projeto com a maquina da RTX 3090.
-# Uso: scripts/sync_3090.sh [--dry-run]
+# Sincroniza o projeto com a maquina da RTX 3060.
+# Uso: scripts/sync_3060.sh [--dry-run]
 #
 # Pesos ficam de fora (o base vem do Hub), exceto as pastas dos tokenizers v2,
 # v3 e v4, que o pretreino_continuado.py e o train_qlora.py leem do disco.
@@ -8,7 +8,7 @@
 # status/ e estado do ZeroTier (identity.secret, authtoken.secret), nao projeto.
 set -euo pipefail
 
-DESTINO="${DESTINO:-usuario@maquina-3090:~/manaca_build/}"
+DESTINO="${DESTINO:-usuario@maquina-3060:~/manaca_build/}"
 ORIGEM="$(cd "$(dirname "$0")/.." && pwd)/"
 
 if [[ ! -f "${ORIGEM}models/manaca-tokenizer-v2/tokenizer.json" ]]; then

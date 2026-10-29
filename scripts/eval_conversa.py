@@ -8,7 +8,7 @@ cuja resposta nao tem `from fastapi` nem `@app.`; as respostas ficam salvas
 para leitura. Gera como o eval_code (greedy, base em 4 bits com --base-4bit,
 template gravado no adapter).
 
-Uso (na 3090):
+Uso (na 3060):
     python scripts/eval_conversa.py --model checkpoints/manaca-fastapi-instruct \\
         --base-4bit --saida results/conversa_instruct.jsonl
 """

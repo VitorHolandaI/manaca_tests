@@ -16,8 +16,8 @@ treinar o lm_head no SFT rebaixa toda peca que o SFT nao pede, inclusive a
 entidade inedita do teste. `--treinar-vocab` liga mesmo assim.
 
 ATENCAO: este script NAO foi executado na maquina de desenvolvimento (sem
-NVIDIA). Rode na RTX 3090 com --smoke primeiro, no stack fixado em
-requirements-3090.txt (trl 0.12.2: `processing_class`, `max_seq_length`).
+NVIDIA). Rode na RTX 3060 com --smoke primeiro, no stack fixado em
+requirements-3060.txt (trl 0.12.2: `processing_class`, `max_seq_length`).
 
 Uso:
     accelerate launch scripts/train_qlora.py \\
@@ -265,7 +265,7 @@ def _carregar_modelo(args: argparse.Namespace, torch):
         bnb_4bit_use_double_quant=True,
     )
     # device explicito: com "auto" o accelerate as vezes manda modulo pra CPU e o
-    # bitsandbytes 4-bit recusa, mesmo com a GPU inteira livre (3090, 23 GiB)
+    # bitsandbytes 4-bit recusa, mesmo com a GPU inteira livre (3060, 12 GB)
     modelo = AutoModelForCausalLM.from_pretrained(
         args.model, quantization_config=quant, device_map={"": 0}
     )
@@ -313,7 +313,7 @@ def treinar(args: argparse.Namespace) -> None:
         # (conferido no 4.46.3 fixado e no 5.17 do venv XPU)
         raise ImportError(
             f"trl incompativel ({err}); esperado trl==0.12.2, "
-            "instale com: pip install -r requirements-3090.txt"
+            "instale com: pip install -r requirements-3060.txt"
         ) from err
 
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer or args.model)
@@ -358,7 +358,7 @@ def treinar(args: argparse.Namespace) -> None:
         dataset_text_field="text",
         max_steps=2 if args.smoke else -1,
         # Adam fp32 de um 1,7B inteiro custaria 13,8 GB so de estados; 8-bit cabe
-        # nos 24 GB da 3090 junto com pesos bf16 (3,4) e gradientes (3,4)
+        # nos 12 GB da 3060, com a RAM do PC, junto com pesos bf16 (3,4) e gradientes (3,4)
         # em full FT cada checkpoint e o modelo inteiro (3,4 GB); sem limite, 3
         # epocas deixariam 10 GB de disco a toa
         save_total_limit=1 if args.full else None,

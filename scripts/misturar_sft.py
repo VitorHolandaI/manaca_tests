@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Amostra o mix de instrucao do LNCC por fonte, para caber no SFT da 3090.
+"""Amostra o mix de instrucao do LNCC por fonte, para caber no SFT da 3060.
 
 O `sft/prepare_data.py` do Manaca-1B-Instruct grava um JSONL por fonte
 (alpaca, aya, oasst, translation, summarization; 103.843 exemplos com os

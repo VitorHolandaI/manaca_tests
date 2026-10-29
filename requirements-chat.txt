@@ -1,5 +1,5 @@
 # Stack do scripts/chat_fastapi.py na maquina de desenvolvimento (sem NVIDIA):
-# as versoes do treino (requirements-3090.txt) com o torch de CPU. O base vai
+# as versoes do treino (requirements-3060.txt) com o torch de CPU. O base vai
 # em bf16 arredondado para NF4 (nf4_simulado.py), sem bitsandbytes.
 #
 #   uv run --python 3.12 --index-strategy unsafe-best-match \
@@ -8,7 +8,7 @@
 #
 # O indice vai na linha de comando: o `uv run --with-requirements` ignora o
 # --extra-index-url escrito aqui. unsafe-best-match pelo mesmo motivo do
-# requirements-3090.txt: o indice do pytorch publica um `requests` antigo.
+# requirements-3060.txt: o indice do pytorch publica um `requests` antigo.
 torch==2.5.1+cpu
 transformers==4.46.3
 peft==0.13.2

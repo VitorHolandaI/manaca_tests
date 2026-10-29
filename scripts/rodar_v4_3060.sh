@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Pipeline do tokenizer v4 (caixa + fronteira como marcadores) na 3090: smoke,
+# Pipeline do tokenizer v4 (caixa + fronteira como marcadores) na 3060: smoke,
 # CPT a partir do CPT v3 (remapeado peca por peca, so <|cola|> nasce), SFT
 # so-LoRA e eval no teste amplo. Reusa data/cpt_v3: o corpus guarda texto cru
 # e a codificacao acontece ao carregar, pelo vocabulario do tokenizer.
-# Uso (na 3090, dentro do tmux):
-#   scripts/rodar_v4_3090.sh 2>&1 | tee logs/v4.log
+# Uso (na 3060, dentro do tmux):
+#   scripts/rodar_v4_3060.sh 2>&1 | tee logs/v4.log
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -23,10 +23,10 @@ etapa() {
     echo "[$(date '+%F %T')] <<< ${nome} ok"
 }
 
-[[ -x "$PY" ]] || { echo "sem $PY; rode antes o rodar_tudo_3090.sh" >&2; exit 1; }
-[[ -f "$V4/tokenizer.json" ]] || { echo "sem $V4; rode o sync_3090.sh" >&2; exit 1; }
+[[ -x "$PY" ]] || { echo "sem $PY; rode antes o rodar_tudo_3060.sh" >&2; exit 1; }
+[[ -f "$V4/tokenizer.json" ]] || { echo "sem $V4; rode o sync_3060.sh" >&2; exit 1; }
 [[ -d "$ORIGEM" ]] || { echo "sem $ORIGEM; o v4 parte do CPT v3" >&2; exit 1; }
-[[ -f data/cpt_v3/treino.jsonl ]] || { echo "sem data/cpt_v3; rode o rodar_v3_3090.sh" >&2; exit 1; }
+[[ -f data/cpt_v3/treino.jsonl ]] || { echo "sem data/cpt_v3; rode o rodar_v3_3060.sh" >&2; exit 1; }
 
 # smoke de 2 passos: pega erro de remapeamento ou de marcador antes das ~10 h
 etapa w1_smoke_cpt $PY scripts/pretreino_continuado.py --model "$ORIGEM" \

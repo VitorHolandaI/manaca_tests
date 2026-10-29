@@ -3,8 +3,8 @@
 # pt do GitHub e prosa da Wikipedia, monta o corpus, CPT, SFT so-LoRA e eval.
 # Para no primeiro erro; cada etapa grava em logs/. A colheita retoma de onde
 # parou (data/colhido/codigo_ptbr.feitos), entao rodar de novo e seguro.
-# Uso (na 3090, com o .venv do rodar_tudo_3090.sh):
-#   scripts/rodar_cpt_grande_3090.sh 2>&1 | tee logs/cpt_grande.log
+# Uso (na 3060, com o .venv do rodar_tudo_3060.sh):
+#   scripts/rodar_cpt_grande_3060.sh 2>&1 | tee logs/cpt_grande.log
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -24,7 +24,7 @@ etapa() {
     echo "[$(date '+%F %T')] <<< ${nome} ok"
 }
 
-[[ -x "$PY" ]] || { echo "sem $PY; rode antes o rodar_tudo_3090.sh" >&2; exit 1; }
+[[ -x "$PY" ]] || { echo "sem $PY; rode antes o rodar_tudo_3060.sh" >&2; exit 1; }
 [[ -n "${HF_TOKEN:-}" ]] || echo "aviso: sem HF_TOKEN, o Hub limita requisicao anonima" >&2
 
 etapa g1_colher_codigo $PY scripts/colher_codigo_ptbr.py \

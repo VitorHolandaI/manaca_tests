@@ -14,7 +14,7 @@ Regra deste relatório: toda afirmação tem (a) o comando, (b) a saída esperad
 A primeira versão deste relatório dizia "harness calibrado = 1.0" e
 "256/256 compilam". Os números estavam certos, mas `ast.parse` só prova
 sintaxe. A revisão rodou o código de referência de verdade e achou quatro
-defeitos que invalidariam o experimento na 3090:
+defeitos que invalidariam o experimento na 3060:
 
 | # | Defeito | Evidência | Correção |
 |---|---|---|---|
@@ -28,7 +28,7 @@ eval; o fallback `from transformers import DataCollatorForCompletionOnlyLM` não
 existia (conferido no 4.46.3 e no 5.17); `tokenizer=` virou
 `processing_class=` (assinatura do `SFTTrainer` no trl 0.12.2); o eval usa
 `torch_dtype=`, que as duas versões do transformers aceitam; e as versões do
-treino foram fixadas em `requirements-3090.txt`.
+treino foram fixadas em `requirements-3060.txt`.
 
 ---
 
@@ -38,7 +38,7 @@ treino foram fixadas em `requirements-3090.txt`.
 |---|---|
 | Repo | `.` (git init, branch `main`, sem commits) |
 | Venv com torch XPU + transformers 5.17 | `~/.venvs/manaca-xpu` |
-| Stack do treino (3090) | `requirements-3090.txt` — torch 2.5.1+cu124, transformers 4.46.3, trl 0.12.2, peft 0.13.2. Resolvido com `uv pip compile`, **ainda não instalado numa 3090** |
+| Stack do treino (3060) | `requirements-3060.txt` — torch 2.5.1+cu124, transformers 4.46.3, trl 0.12.2, peft 0.13.2. Resolvido com `uv pip compile`, **ainda não instalado numa 3060** |
 | Stack dos testes | `requirements-dev.txt` (pytest, fastapi, sqlalchemy, httpx) |
 | Tokenizador oficial | `models/manaca-hf-official/tokenizer.model` |
 | Modelo instruct oficial (3,44 GB) | `models/manaca-hf-official/` (sha256 `0c95dc5a…418ff3`) |
@@ -128,7 +128,7 @@ oficial baixado).
 | Item | Por que não foi provado | Como validar |
 |---|---|---|
 | **Suíte em `tests/`** | escrita, não rodada | `uv run --with-requirements requirements-dev.txt pytest tests/` |
-| **`train_qlora.py` roda** | Não há NVIDIA nesta máquina | Na 3090, com `requirements-3090.txt`: `accelerate launch scripts/train_qlora.py --smoke`. Loss finita e `check do collator OK` |
+| **`train_qlora.py` roda** | Não há NVIDIA nesta máquina | Na 3060, com `requirements-3060.txt`: `accelerate launch scripts/train_qlora.py --smoke`. Loss finita e `check do collator OK` |
 | **O fine-tune melhora o `compile_rate`** | O treino nunca rodou | Treinar no split de treino, avaliar no de teste, comparar com o baseline do base (1.5) |
 | **Generalização para entidade nova** | O teste tem entidades novas, mas os campos delas (`rua`, `cep`…) não aparecem na instrução | `compile_rate` e `marker_rate` não exigem campos; o schema gerado vai ser inventado, e isso é esperado |
 | **Diversidade do dataset** | 192 exemplos de templates combinatórios | Olhar 10 exemplos aleatórios |
@@ -141,7 +141,7 @@ oficial baixado).
    `session`, `column` etc. seria capitalizado errado. O gerador usa `sessao`.
 2. **O alvo de treino é 100% minúsculo, por design.** O tokenizer normaliza para
    minúsculas (`Abaixo está Instrução` → `▁abaixo ▁está ▁instrução`).
-3. **QLoRA é opcional numa 3090.** O modelo em bf16 tem ~2,4 GB; LoRA sem 4-bit
+3. **QLoRA é opcional numa 3060.** O modelo em bf16 tem ~2,4 GB; LoRA sem 4-bit
    cabe e tira o bitsandbytes da frente. Não foi mudado.
 4. **Template sem acento.** `train_qlora.py` e `eval_code.py` usam
    `### Instrucao:`, e o `chat_oficial.py` usa `### Instrução:`. Treino e eval
@@ -161,7 +161,7 @@ oficial baixado).
 | `scripts/train_qlora.py` | QLoRA no base CC BY 4.0 | ❌ **não executado** |
 | `scripts/chat_oficial.py` | `chat.py` oficial + patch `xpu` | fora do fine-tune |
 | `tests/` | execução real do código de referência | ⏳ escrito, não rodado |
-| `requirements-3090.txt` | stack fixado do treino | resolvido, não instalado |
+| `requirements-3060.txt` | stack fixado do treino | resolvido, não instalado |
 | `requirements-dev.txt` | stack dos testes | — |
 
 ---
@@ -193,7 +193,7 @@ PY
 Antes da revisão, a infraestrutura **não** estava pronta: o modelo ia decorar
 código que quebra em runtime e seria avaliado nos próprios dados de treino, com
 a geração cortada. Isso foi corrigido. Falta rodar a suíte em `tests/` e fazer
-o `--smoke` na 3090.
+o `--smoke` na 3060.
 
 Veredito: **a infraestrutura está pronta para o experimento, pendente da suíte
 e do smoke test; o experimento não foi feito.**

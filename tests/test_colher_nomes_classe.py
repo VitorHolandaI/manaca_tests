@@ -62,7 +62,7 @@ def test_frequencias_de_palavras_dobra_acento_e_caixa() -> None:
     "nome", ["eliminar", "receber", "visitas", "emitido", "object", "music", "fermat"]
 )
 def test_parece_entidade_recusa_verbo_plural_participio_e_ingles(nome: str) -> None:
-    # regressao: a primeira colheita na 3090 (2026-10-02) aceitou todos esses
+    # regressao: a primeira colheita na 3060 (2026-10-02) aceitou todos esses
     assert not parece_entidade(nome)
 
 

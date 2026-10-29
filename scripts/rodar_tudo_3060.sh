@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Roda o pipeline inteiro na 3090, sem ninguem olhando: venv, smokes, CPT, SFT
+# Roda o pipeline inteiro na 3060, sem ninguem olhando: venv, smokes, CPT, SFT
 # e eval. Para no primeiro erro; cada etapa grava log em logs/.
-# Uso (na 3090): nohup scripts/rodar_tudo_3090.sh > logs/rodar_tudo.log 2>&1 &
+# Uso (na 3060): nohup scripts/rodar_tudo_3060.sh > logs/rodar_tudo.log 2>&1 &
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -22,7 +22,7 @@ if [[ ! -d .venv ]]; then
     uv venv --python 3.12
 fi
 # requirements-dev traz fastapi/sqlalchemy/httpx, que o eval --executar exige
-uv pip install --python .venv/bin/python -r requirements-3090.txt \
+uv pip install --python .venv/bin/python -r requirements-3060.txt \
     --index-strategy unsafe-best-match
 uv pip install --python .venv/bin/python -r requirements-dev.txt
 PY=.venv/bin/python

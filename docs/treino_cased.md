@@ -92,11 +92,11 @@ O treino tem duas etapas com objetivos diferentes.
 | Volume | ~35M tokens, 1 época, 2.129 passos | 2.336 exemplos, 3 épocas, 438 passos |
 | Taxa de aprendizado | 2e-5 | 2e-4 |
 | Batch efetivo | 8 blocos (1 × 8 de acumulação) | 16 exemplos (1 × 16 de acumulação) |
-| Tempo na RTX 3090 | 2 h 57 min | 39 min |
+| Tempo na RTX 3060 | 2 h 57 min | 39 min |
 
 O nome "pré-treino" vem do tipo de treino, não do momento. É o mesmo processo que criou o modelo base: prever o próximo token em texto bruto, com todos os pesos livres. A diferença é partir dos pesos já treinados em vez de pesos aleatórios.
 
-O CPT usa `adamw_bnb_8bit` e gradient checkpointing, e ocupou cerca de 15 GB dos 24 GB da placa. A loss de validação caiu de 4,2169 antes do treino para 2,0274 no fim. Os checkpoints intermediários são apagados no fim porque o estado do otimizador passa de 10 GB.
+O CPT usa `adamw_bnb_8bit` e gradient checkpointing, e ocupou cerca de 15 GB, somando os 12 GB da placa e a RAM do PC. A loss de validação caiu de 4,2169 antes do treino para 2,0274 no fim. Os checkpoints intermediários são apagados no fim porque o estado do otimizador passa de 10 GB.
 
 No SFT, a matriz de embedding e o `lm_head` ficam congelados. Isso foi uma decisão tomada depois de medir. Numa rodada anterior, com o `lm_head` treinável, o SFT de fato quebrou o empate entre `Column` e `▁column` (case_rate 1,0), mas empurrou para baixo toda peça que não aparece como resposta no treino. As peças de `comentario` e `endereco` estão entre elas, e o modelo passou a escrever `deletar_ comentario`. Das 201 peças novas que o SFT usa, 100 não apareciam no corpus do CPT pequeno, e só 236 das 51.148 peças novas apareciam 20 vezes ou mais. Daí veio a decisão de aumentar o CPT, que é onde a peça nova aprende sentido, e deixar o SFT só no LoRA.
 
@@ -163,13 +163,13 @@ Para saber se o limite era do dataset ou do Manacá, o mesmo SFT (7.932 exemplos
 | Manacá-1B + CPT grande + 2.000 nomes | 0,32 | 0,88 | 0,87 | 0,88 | 0,74 | 2 h 11 |
 | Qwen2.5-0.5B, sem CPT | 1,0 | 1,0 | 1,0 | 1,0 | 0,945 | 54 min |
 
-O dataset e o eval estão certos: um modelo que já sabe caixa aprende a tarefa inteira só com o SFT. O limite é o pré-treino do Manacá, todo em minúsculas, que 35 milhões de tokens de CPT não corrigem. O Qwen3, por comparação, foi pré-treinado em 36 trilhões de tokens ([relatório técnico](https://arxiv.org/html/2505.09388)). O Qwen3 ficou de fora do controle porque exige transformers 4.51, e o stack da 3090 usa o 4.46.3.
+O dataset e o eval estão certos: um modelo que já sabe caixa aprende a tarefa inteira só com o SFT. O limite é o pré-treino do Manacá, todo em minúsculas, que 35 milhões de tokens de CPT não corrigem. O Qwen3, por comparação, foi pré-treinado em 36 trilhões de tokens ([relatório técnico](https://arxiv.org/html/2505.09388)). O Qwen3 ficou de fora do controle porque exige transformers 4.51, e o stack da 3060 usa o 4.46.3.
 
 Para rodar o Qwen, o `train_qlora.py` passou a trocar o pad quando ele é o próprio EOS (no Qwen os dois são `<|endoftext|>`, e o collator apagaria o EOS dos labels), e o eval passou a cortar a saída no primeiro EOS ou pad.
 
 Para manter o Manacá como base, o tokenizer v3 passou a marcar a maiúscula com uma peça própria, como em [Land e Meister](https://arxiv.org/html/2608.08847). `Comentario` vira `<|maj|>` seguido da mesma peça `comentario` da instrução, e `HTTPException` vira `<|mai|>http<|maj|>exception`. O marcador vai antes do espaço que precede a palavra, para que a peça continue sendo `▁comentario`. A conversão é exata nos dois sentidos e roda fora do modelo: o texto é codificado antes de tokenizar e decodificado depois de gerar (`scripts/caixa_marcada.py`).
 
-O v3 tem as 64.000 peças originais do Manacá (que baixam a caixa), as 43.120 peças sem espaço do v2 e os 2 marcadores, 107.122 tokens no total. O CPT partiu do CPT grande, com as linhas do embedding copiadas peça por peça, e os marcadores começaram pela média das letras maiúsculas do v2. O corpus juntou o código e a Wikipédia de antes com 65 milhões de tokens do [GigaVerbo-v2](https://huggingface.co/datasets/Polygl0t/gigaverbo-v2), o corpus do projeto Tucano 2, filtrado por nota educativa e toxicidade: 104 milhões de tokens, 6.352 passos, cerca de 8 h 45 na RTX 3090. O SFT foi o mesmo das rodadas anteriores (7.932 exemplos, 3 épocas, 2 h 21).
+O v3 tem as 64.000 peças originais do Manacá (que baixam a caixa), as 43.120 peças sem espaço do v2 e os 2 marcadores, 107.122 tokens no total. O CPT partiu do CPT grande, com as linhas do embedding copiadas peça por peça, e os marcadores começaram pela média das letras maiúsculas do v2. O corpus juntou o código e a Wikipédia de antes com 65 milhões de tokens do [GigaVerbo-v2](https://huggingface.co/datasets/Polygl0t/gigaverbo-v2), o corpus do projeto Tucano 2, filtrado por nota educativa e toxicidade: 104 milhões de tokens, 6.352 passos, cerca de 8 h 45 na RTX 3060. O SFT foi o mesmo das rodadas anteriores (7.932 exemplos, 3 épocas, 2 h 21).
 
 Com o marcador, a maiúscula deixa de ser uma ortografia separada para cada palavra e vira uma decisão só, que vale para todas. O modelo aprende quando pôr `<|maj|>` com cada palavra maiúscula do corpus e aplica isso a palavras que nunca viu, copiando a peça minúscula da instrução.
 
@@ -190,9 +190,9 @@ O CPT do v4 partiu do CPT do v3, com as peças copiadas pelo texto e só o `<|co
 
 ## Ambiente
 
-RTX 3090 de 24 GB, Python 3.12, torch 2.5.1 (CUDA 12.4), transformers 4.46.3, trl 0.12.2, peft 0.13.2, datasets 3.1.0. O pipeline inteiro roda com `scripts/rodar_cpt_grande_3090.sh`, em seis etapas: colher código, colher Wikipedia, montar o corpus, CPT, SFT e avaliação. Cada etapa grava o log em `logs/`.
+RTX 3060 de 12 GB, com parte da memória na RAM do PC, Python 3.12, torch 2.5.1 (CUDA 12.4), transformers 4.46.3, trl 0.12.2, peft 0.13.2, datasets 3.1.0. O pipeline inteiro roda com `scripts/rodar_cpt_grande_3060.sh`, em seis etapas: colher código, colher Wikipedia, montar o corpus, CPT, SFT e avaliação. Cada etapa grava o log em `logs/`.
 
-## Rodar o modelo fora da 3090
+## Rodar o modelo fora da 3060
 
 O modelo final são duas peças: `checkpoints/manaca-cpt-v4` (o modelo depois do CPT, 1,72 bilhão de parâmetros em bf16, 3,4 GB) e `checkpoints/manaca-fastapi-v4` (o adapter LoRA do SFT, 134 MB). As duas ficam fora do git.
 
@@ -223,7 +223,7 @@ O modelo responde a qualquer pedido com um arquivo FastAPI, inclusive a "oi" (sa
 
 O v4 respondia qualquer pedido com um arquivo FastAPI, porque o SFT só tinha esse tipo de exemplo; "oi" virava `class Oi(Base)`. O instruct mistura no SFT os pedidos de FastAPI com a receita de instrução do [Manacá-1B-Instruct do LNCC](https://github.com/Instituto-IA-LNCC/manaca-1b-instruct), no template deles (com acento e com `### Entrada:`).
 
-Os dados gerais saíram do `sft/prepare_data.py` do LNCC, rodado sem mudança com as fontes da v2: Alpaca-PT, Aya (português), OASST1 (português), tradução (opus-100) e resumo (XLSum), 103.843 exemplos depois de deduplicação e corte de tamanho. As tarefas JASTER ficaram de fora. `scripts/misturar_sft.py` sorteou 12.815 deles por fonte (6.000, 3.000, os 315, 2.000 e 1.500), que entraram com os 7.932 de FastAPI. Todos cabem inteiros em 2.048 tokens. O SFT partiu do `manaca-cpt-v4`, com 3 épocas, e levou 4 h 22 na RTX 3090.
+Os dados gerais saíram do `sft/prepare_data.py` do LNCC, rodado sem mudança com as fontes da v2: Alpaca-PT, Aya (português), OASST1 (português), tradução (opus-100) e resumo (XLSum), 103.843 exemplos depois de deduplicação e corte de tamanho. As tarefas JASTER ficaram de fora. `scripts/misturar_sft.py` sorteou 12.815 deles por fonte (6.000, 3.000, os 315, 2.000 e 1.500), que entraram com os 7.932 de FastAPI. Todos cabem inteiros em 2.048 tokens. O SFT partiu do `manaca-cpt-v4`, com 3 épocas, e levou 4 h 22 na RTX 3060.
 
 | Teste | v4 (só FastAPI) | Instruct |
 | --- | --- | --- |

@@ -5,9 +5,9 @@
 # O modelo precisa ser suportado pelo transformers 4.46.3 e ter as camadas
 # q_proj/k_proj/v_proj/o_proj/gate_proj/up_proj/down_proj (Llama, Qwen2,
 # Mistral, Gemma); o pad igual ao EOS e trocado pelo train_qlora.
-# Uso (na 3090, dentro do tmux):
-#   scripts/comparar_modelo_3090.sh Qwen/Qwen2.5-0.5B qwen05
-#   MODO=fastapi scripts/comparar_modelo_3090.sh Qwen/Qwen2.5-0.5B qwen05-fastapi
+# Uso (na 3060, dentro do tmux):
+#   scripts/comparar_modelo_3060.sh Qwen/Qwen2.5-0.5B qwen05
+#   MODO=fastapi scripts/comparar_modelo_3060.sh Qwen/Qwen2.5-0.5B qwen05-fastapi
 # MODO=instruct (padrao): FastAPI + mix do LNCC, template lncc (como o entregue)
 # MODO=fastapi: so FastAPI, template legado (como o benchmark de 2026-10-03)
 set -euo pipefail
@@ -26,7 +26,7 @@ case "$MODO" in
     *) echo "MODO invalido: $MODO, esperado instruct ou fastapi" >&2; exit 1 ;;
 esac
 mkdir -p logs results
-[[ -x "$PY" ]] || { echo "sem $PY; rode antes o rodar_tudo_3090.sh" >&2; exit 1; }
+[[ -x "$PY" ]] || { echo "sem $PY; rode antes o rodar_tudo_3060.sh" >&2; exit 1; }
 
 etapa() {
     local nome="$1"

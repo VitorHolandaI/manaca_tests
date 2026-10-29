@@ -9,7 +9,7 @@ Wikipedia com sufixo de substantivo (`-cao`, `-mento`, `-dade`...). Fica com
 os --maximo mais frequentes. Exclui todo nome ja usado pelo gen_dataset,
 inclusive os de teste.
 
-Uso (na 3090, onde ficam os JSONL colhidos):
+Uso (na 3060, onde ficam os JSONL colhidos):
     python scripts/colher_nomes_classe.py --saida scripts/nomes_colhidos.tsv
 """
 
