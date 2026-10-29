@@ -9,7 +9,7 @@
 # O indice vai na linha de comando: o `uv run --with-requirements` ignora o
 # --extra-index-url escrito aqui. unsafe-best-match pelo mesmo motivo do
 # requirements-3060.txt: o indice do pytorch publica um `requests` antigo.
-torch==2.5.1+cpu
+torch==2.13.0
 transformers==4.46.3
 peft==0.13.2
 accelerate==1.1.1
